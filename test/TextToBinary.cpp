@@ -134,12 +134,6 @@ INSTANTIATE_TEST_CASE_P(ParseMask, BadFPFastMathMaskParseTest,
                             "Unroll"  // A good word, but for the wrong enum
                         }));
 
-// TODO(dneto): Aliasing like this relies on undefined behaviour. Fix this.
-union char_word_t {
-  char cs[4];
-  uint32_t u;
-};
-
 TEST_F(TextToBinaryTest, InvalidText) {
   ASSERT_EQ(SPV_ERROR_INVALID_TEXT,
             spvTextToBinary(context, nullptr, 0, &binary, &diagnostic));
@@ -519,7 +513,7 @@ TEST(AssemblyContextParseFloat16, Overflow) {
   // on floating point.
   AssemblyContext context(AutoText(""), nullptr);
   const spv_result_t ec = SPV_FAILED_MATCH;
-  spvutils::HexFloat<spvutils::FloatProxy<spvutils::Float16>> f(0.0f);
+  spvutils::HexFloat<spvutils::FloatProxy<spvutils::Float16>> f(0);
 
   EXPECT_EQ(SPV_SUCCESS, context.parseNumber("-0.0", ec, &f, ""));
   EXPECT_EQ(uint16_t{0x8000}, f.value().getAsFloat().get_value());

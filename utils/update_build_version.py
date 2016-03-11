@@ -23,12 +23,15 @@
 # directory's "git describe" output enclosed in double quotes and appropriately
 # escaped.
 
+from __future__ import print_function
+
 import datetime
 import os.path
 import subprocess
 import sys
 
 OUTFILE = 'build-version.inc'
+
 
 def command_output(cmd, dir):
     """Runs a command in a directory and returns its standard output stream.
@@ -42,8 +45,8 @@ def command_output(cmd, dir):
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE)
     (stdout, _) = p.communicate()
-    if p.returncode !=0:
-        raise RuntimeError("Failed to run %s in %s" % (cmd, dir))
+    if p.returncode != 0:
+        raise RuntimeError('Failed to run %s in %s' % (cmd, dir))
     return stdout
 
 
@@ -54,20 +57,26 @@ def describe(dir):
     Runs 'git describe', or alternately 'git rev-parse HEAD', in dir.  If
     successful, returns the output; otherwise returns 'unknown hash, <date>'."""
     try:
-        return command_output(["git", "describe"], dir).rstrip()
+        return command_output(['git', 'describe'], dir).rstrip()
     except:
         try:
-            return command_output(["git", "rev-parse", "HEAD"], dir).rstrip()
+            return command_output(['git', 'rev-parse', 'HEAD'], dir).rstrip()
         except:
             return 'unknown hash, ' + datetime.date.today().isoformat()
 
 
 def main():
     if len(sys.argv) != 2:
-        print 'usage: {0} <spirv-tools_dir>'.format(sys.argv[0])
+        print('usage: {0} <spirv-tools_dir>'.format(sys.argv[0]))
         sys.exit(1)
 
-    new_content = ('"spirv-tools ' + describe(sys.argv[1]).replace('"', '\\"') + '\\n"\n')
+    new_content = '"spirv-tools {}\\n"\n'.format(
+        # decode() is needed here for Python3 compatibility. In Python2,
+        # str and bytes are the same type, but not in Python3.
+        # Popen.communicate() returns a bytes instance, which needs to be
+        # decoded into text data first in Python3. And this decode() won't
+        # hurt Python2.
+        describe(sys.argv[1]).decode('ascii').replace('"', '\\"'))
     if os.path.isfile(OUTFILE) and new_content == open(OUTFILE, 'r').read():
         sys.exit(0)
     open(OUTFILE, 'w').write(new_content)
