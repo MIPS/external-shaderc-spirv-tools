@@ -28,7 +28,15 @@
 
 #include <cstdlib>
 
-spv_context spvContextCreate() {
+spv_context spvContextCreate(spv_target_env env) {
+  switch (env) {
+    case SPV_ENV_UNIVERSAL_1_0:
+    case SPV_ENV_VULKAN_1_0:
+      break;
+    default:
+      return nullptr;
+  }
+
   spv_opcode_table opcode_table;
   spv_operand_table operand_table;
   spv_ext_inst_table ext_inst_table;
@@ -37,11 +45,7 @@ spv_context spvContextCreate() {
   spvOperandTableGet(&operand_table);
   spvExtInstTableGet(&ext_inst_table);
 
-  return new spv_context_t{opcode_table, operand_table, ext_inst_table};
+  return new spv_context_t{env, opcode_table, operand_table, ext_inst_table};
 }
 
-void spvContextDestroy(spv_context context) {
-  ::free(context->opcode_table->entries);
-  delete context->opcode_table;
-  delete context;
-}
+void spvContextDestroy(spv_context context) { delete context; }

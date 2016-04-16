@@ -27,10 +27,6 @@
 #ifndef SPIRV_TOOLS_LIBSPIRV_H_
 #define SPIRV_TOOLS_LIBSPIRV_H_
 
-#include "spirv/GLSL.std.450.h"
-#include "spirv/OpenCL.std.h"
-#include "spirv/spirv.h"
-
 #ifdef __cplusplus
 extern "C" {
 #else
@@ -40,17 +36,7 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 
-// Versions
-// This library is based on SPIR-V 1.0 Rev2
-// TODO(dneto): Use the values from the SPIR-V header, when it's updated for
-// SPIR-V 1.0 public release.
-#define SPV_SPIRV_VERSION_MAJOR (SPV_VERSION >> 16)
-#define SPV_SPIRV_VERSION_MINOR (SPV_VERSION & 0xffff)
-#define SPV_SPIRV_VERSION_REVISION (SPV_REVISION)
-
 // Helpers
-
-#define spvIsInBitfield(value, bitfield) ((value) == ((value)&bitfield))
 
 #define SPV_BIT(shift) (1 << (shift))
 
@@ -205,8 +191,6 @@ typedef enum spv_operand_type_t {
   SPV_OPERAND_TYPE_OPTIONAL_TYPED_LITERAL_INTEGER,
   // An optional literal string.
   SPV_OPERAND_TYPE_OPTIONAL_LITERAL_STRING,
-  // An optional execution mode.
-  SPV_OPERAND_TYPE_OPTIONAL_EXECUTION_MODE,
   // An optional access qualifier
   SPV_OPERAND_TYPE_OPTIONAL_ACCESS_QUALIFIER,
   // An optional context-independent value, or CIV.  CIVs are tokens that we can
@@ -225,9 +209,7 @@ typedef enum spv_operand_type_t {
   // where the literal number must always be an integer of some sort.
   SPV_OPERAND_TYPE_VARIABLE_LITERAL_INTEGER_ID,
   // A sequence of zero or more pairs of (Id, Literal integer)
-  SPV_OPERAND_TYPE_VARIABLE_ID_LITERAL_INTEGER,
-  // A sequence of zero or more execution modes
-  LAST_VARIABLE(SPV_OPERAND_TYPE_VARIABLE_EXECUTION_MODE),
+  LAST_VARIABLE(SPV_OPERAND_TYPE_VARIABLE_ID_LITERAL_INTEGER),
 
   // This is a sentinel value, and does not represent an operand type.
   // It should come last.
@@ -291,7 +273,7 @@ typedef struct spv_parsed_instruction_t {
   const uint32_t* words;
   // The number of words in this instruction.
   uint16_t num_words;
-  SpvOp opcode;
+  uint16_t opcode;
   // The extended instruction type, if opcode is OpExtInst.  Otherwise
   // this is the "none" value.
   spv_ext_inst_type_t ext_inst_type;
@@ -347,8 +329,19 @@ typedef spv_context_t* spv_context;
 
 // Platform API
 
-// Creates a context object.
-spv_context spvContextCreate();
+// Certain target environments impose additional restrictions on SPIR-V, so it's
+// often necessary to specify which one applies.  SPV_ENV_UNIVERSAL means
+// environment-agnostic SPIR-V.
+typedef enum {
+  SPV_ENV_UNIVERSAL_1_0,  // SPIR-V 1.0 latest revision, no other restrictions.
+  SPV_ENV_VULKAN_1_0,     // Vulkan 1.0 latest revision.
+} spv_target_env;
+
+// Returns a string describing the given SPIR-V target environment.
+const char* spvTargetEnvDescription(spv_target_env env);
+
+// Creates a context object.  Returns null if env is invalid.
+spv_context spvContextCreate(spv_target_env env);
 
 // Destroys the given context object.
 void spvContextDestroy(spv_context context);
@@ -377,10 +370,11 @@ spv_result_t spvBinaryToText(const spv_const_context context,
 // pointer.
 void spvBinaryDestroy(spv_binary binary);
 
-// Validates a SPIR-V binary for correctness.
+// Validates a SPIR-V binary for correctness. Any errors will be written into
+// *diagnostic.
 spv_result_t spvValidate(const spv_const_context context,
                          const spv_const_binary binary,
-                         spv_diagnostic* pDiagnostic);
+                         spv_diagnostic* diagnostic);
 
 // Creates a diagnostic object. The position parameter specifies the location in
 // the text/binary stream. The message parameter, copied into the diagnostic

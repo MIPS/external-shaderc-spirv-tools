@@ -29,6 +29,8 @@ project(spirv-tools)
 enable_testing()
 set(SPIRV_TOOLS "SPIRV-Tools")
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   add_definitions(-DSPIRV_LINUX)
 elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
@@ -135,6 +137,18 @@ add_custom_target(spirv-tools-build-version
   ${spirv-tools_SOURCE_DIR}
   COMMENT "Update build-version.inc in the Spirv-tools build directory (if necessary).")
 
+add_custom_target(spirv-tools-build-tables
+  ${PYTHON_EXECUTABLE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/utils/generate_grammar_tables.py
+  --spirv-core-grammar=${spirv-tools_SOURCE_DIR}/source/spirv.core.grammar.json
+  --extinst-glsl-grammar=${spirv-tools_SOURCE_DIR}/source/extinst.glsl.std.450.grammar.json
+  --extinst-opencl-grammar=${spirv-tools_SOURCE_DIR}/source/extinst.opencl.std.grammar.json
+  --core-insts-output=${spirv-tools_BINARY_DIR}/core.insts.inc
+  --glsl-insts-output=${spirv-tools_BINARY_DIR}/glsl.std.450.insts.inc
+  --opencl-insts-output=${spirv-tools_BINARY_DIR}/opencl.std.insts.inc
+  --operand-kinds-output=${spirv-tools_BINARY_DIR}/operand.kinds.inc
+  COMMENT "Generate info tables for SPIR-V instructions and operands.")
+
 # Defaults to OFF if the user didn't set it.
 option(SPIRV_SKIP_EXECUTABLES
        "Skip building the executable and tests along with the library"
@@ -149,9 +163,3 @@ add_subdirectory(test)
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/libspirv.h
   DESTINATION include/spirv-tools/)
-# The installation is broken without these header files from the SPIR-V Registry.
-# The libspirv.h header includes them.
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv/spirv.h
-              ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv/GLSL.std.450.h
-              ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv/OpenCL.std.h
-  DESTINATION include/spirv/)
