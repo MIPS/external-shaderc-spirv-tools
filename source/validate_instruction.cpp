@@ -26,14 +26,18 @@
 
 // Performs validation on instructions that appear inside of a SPIR-V block.
 
+#include "validate.h"
+
 #include <cassert>
+
 #include <sstream>
 #include <string>
 
 #include "diagnostic.h"
 #include "opcode.h"
 #include "spirv_definition.h"
-#include "validate_passes.h"
+#include "val/Function.h"
+#include "val/ValidationState.h"
 
 using libspirv::AssemblyGrammar;
 using libspirv::DiagnosticStream;
@@ -120,8 +124,14 @@ spv_result_t InstructionPass(ValidationState_t& _,
                              const spv_parsed_instruction_t* inst) {
   const SpvOp opcode = static_cast<SpvOp>(inst->opcode);
   if (opcode == SpvOpCapability)
-    _.registerCapability(
+    _.RegisterCapability(
         static_cast<SpvCapability>(inst->words[inst->operands[0].offset]));
+  if (opcode == SpvOpMemoryModel) {
+    _.setAddressingModel(
+        static_cast<SpvAddressingModel>(inst->words[inst->operands[0].offset]));
+    _.setMemoryModel(
+        static_cast<SpvMemoryModel>(inst->words[inst->operands[1].offset]));
+  }
   if (opcode == SpvOpVariable) {
     const auto storage_class =
         static_cast<SpvStorageClass>(inst->words[inst->operands[2].offset]);
@@ -133,6 +143,10 @@ spv_result_t InstructionPass(ValidationState_t& _,
         return _.diag(SPV_ERROR_INVALID_LAYOUT)
                << "Variables must have a function[7] storage class inside"
                   " of a function";
+      }
+      if(_.get_current_function().IsFirstBlock(_.get_current_function().get_current_block()->get_id()) == false) {
+        return _.diag(SPV_ERROR_INVALID_CFG)
+          << "Variables can only be defined in the first block of a function";
       }
     } else {
       if (storage_class == SpvStorageClassFunction) {

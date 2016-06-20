@@ -24,9 +24,14 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
-#include <gtest/gtest.h>
+#ifndef LIBSPIRV_MACRO_H_
+#define LIBSPIRV_MACRO_H_
 
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
+// Evaluates to the number of elements of array A.
+//
+// If we could use constexpr, then we could make this a template function.
+// If the source arrays were std::array, then we could have used
+// std::array::size.
+#define ARRAY_SIZE(A) (static_cast<uint32_t>(sizeof(A) / sizeof(A[0])))
+
+#endif  // LIBSPIRV_MACRO_H_

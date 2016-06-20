@@ -38,6 +38,7 @@
 namespace {
 
 using ::testing::ValuesIn;
+using spvtest::ScopedContext;
 using std::ostringstream;
 using std::string;
 using std::vector;
@@ -414,7 +415,8 @@ class OpTypeArrayLengthTest
   // Runs spvValidate() on v, printing any errors via spvDiagnosticPrint().
   spv_result_t Val(const SpirvVector& v) {
     spv_const_binary_t cbinary{v.data(), v.size()};
-    const auto status = spvValidate(context, &cbinary, &diagnostic_);
+    const auto status =
+        spvValidate(ScopedContext().context, &cbinary, &diagnostic_);
     if (status != SPV_SUCCESS) {
       spvDiagnosticPrint(diagnostic_);
     }
@@ -1562,8 +1564,26 @@ TEST_F(ValidateID, OpReturnValueIsVoid) {
   CHECK(spirv, SPV_ERROR_INVALID_ID);
 }
 
-TEST_F(ValidateID, OpReturnValueIsVariable) {
+TEST_F(ValidateID, OpReturnValueIsVariableInPhysical) {
+  // It's valid to return a pointer in a physical addressing model.
   const char* spirv = R"(
+     OpMemoryModel Physical32 OpenCL
+%1 = OpTypeVoid
+%2 = OpTypeInt 32 0
+%3 = OpTypePointer Private %2
+%4 = OpTypeFunction %3
+%5 = OpFunction %3 None %4
+%6 = OpLabel
+%7 = OpVariable %3 Function
+     OpReturnValue %7
+     OpFunctionEnd)";
+  CHECK(spirv, SPV_SUCCESS);
+}
+
+TEST_F(ValidateID, OpReturnValueIsVariableInLogical) {
+  // It's invalid to return a pointer in a physical addressing model.
+  const char* spirv = R"(
+     OpMemoryModel Logical GLSL450
 %1 = OpTypeVoid
 %2 = OpTypeInt 32 0
 %3 = OpTypePointer Private %2
@@ -1690,6 +1710,76 @@ TEST_F(ValidateID, OpPtrAccessChainGood) {
       OpReturn
       OpFunctionEnd)";
   CHECK_KERNEL(spirv, SPV_SUCCESS, 64);
+}
+
+TEST_F(ValidateID, OpLoadBitcastPointerGood) {
+  const char* spirv = R"(
+%2  = OpTypeVoid
+%3  = OpTypeInt 32 1
+%4  = OpTypeFloat 32
+%5  = OpTypePointer UniformConstant %3
+%6  = OpTypePointer UniformConstant %4
+%7  = OpVariable %5 UniformConstant
+%8  = OpTypeFunction %2
+%9  = OpFunction %2 None %8
+%10 = OpLabel
+%11 = OpBitcast %6 %7
+%12 = OpLoad %4 %11
+      OpReturn
+      OpFunctionEnd)";
+  CHECK_KERNEL(spirv, SPV_SUCCESS, 64);
+}
+TEST_F(ValidateID, OpLoadBitcastNonPointerBad) {
+  const char* spirv = R"(
+%2  = OpTypeVoid
+%3  = OpTypeInt 32 1
+%4  = OpTypeFloat 32
+%5  = OpTypePointer UniformConstant %3
+%6  = OpTypeFunction %2
+%7  = OpVariable %5 UniformConstant
+%8  = OpFunction %2 None %6
+%9  = OpLabel
+%10 = OpLoad %3 %7
+%11 = OpBitcast %4 %10
+%12 = OpLoad %3 %11
+      OpReturn
+      OpFunctionEnd)";
+  CHECK_KERNEL(spirv, SPV_ERROR_INVALID_ID, 64);
+}
+TEST_F(ValidateID, OpStoreBitcastPointerGood) {
+  const char* spirv = R"(
+%2  = OpTypeVoid
+%3  = OpTypeInt 32 1
+%4  = OpTypeFloat 32
+%5  = OpTypePointer Function %3
+%6  = OpTypePointer Function %4
+%7  = OpTypeFunction %2
+%8  = OpConstant %3 42
+%9  = OpFunction %2 None %7
+%10 = OpLabel
+%11 = OpVariable %6 Function
+%12 = OpBitcast %5 %11
+      OpStore %12 %8
+      OpReturn
+      OpFunctionEnd)";
+  CHECK_KERNEL(spirv, SPV_SUCCESS, 64);
+}
+TEST_F(ValidateID, OpStoreBitcastNonPointerBad) {
+  const char* spirv = R"(
+%2  = OpTypeVoid
+%3  = OpTypeInt 32 1
+%4  = OpTypeFloat 32
+%5  = OpTypePointer Function %4
+%6  = OpTypeFunction %2
+%7  = OpConstant %4 42
+%8  = OpFunction %2 None %6
+%9  = OpLabel
+%10 = OpVariable %5 Function
+%11 = OpBitcast %3 %7
+      OpStore %11 %7
+      OpReturn
+      OpFunctionEnd)";
+  CHECK_KERNEL(spirv, SPV_ERROR_INVALID_ID, 64);
 }
 
 // TODO: OpLifetimeStart

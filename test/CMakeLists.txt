@@ -24,6 +24,30 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
+function(add_spvtools_unittest target srcs libs)
+  add_executable(${target} ${srcs})
+  spvtools_default_compile_options(${target})
+  if(${COMPILER_IS_LIKE_GNU})
+    target_compile_options(${target} PRIVATE -Wno-undef)
+  endif()
+  if(${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
+    # Disable C4503 "decorated name length exceeded" warning,
+    # triggered by some heavily templated types.
+    # We don't care much about that in test code.
+    # Important to do since we have warnings-as-errors.
+    target_compile_options(${target} PRIVATE /wd4503)
+  endif()
+  target_include_directories(${target} PRIVATE
+    ${spirv-tools_SOURCE_DIR}
+    ${SPIRV_HEADER_INCLUDE_DIR}
+    ${gtest_SOURCE_DIR}/include
+    ${gmock_SOURCE_DIR}/include
+  )
+  target_link_libraries(${target} PRIVATE ${libs})
+  target_link_libraries(${target} PRIVATE gmock_main)
+  add_test(NAME spirv-tools-${target} COMMAND ${target})
+endfunction()
+
 if (NOT ${SPIRV_SKIP_EXECUTABLES})
   if (TARGET gmock)
     message(STATUS "Found Google Mock, building tests.")
@@ -59,6 +83,7 @@ if (NOT ${SPIRV_SKIP_EXECUTABLES})
       ${CMAKE_CURRENT_SOURCE_DIR}/OperandCapabilities.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/Operand.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/OperandPattern.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/SoftwareVersion.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/TextAdvance.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/TextDestroy.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/TextLiteral.cpp
@@ -78,35 +103,21 @@ if (NOT ${SPIRV_SKIP_EXECUTABLES})
       ${CMAKE_CURRENT_SOURCE_DIR}/TextToBinary.Memory.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/TextToBinary.Miscellaneous.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/TextToBinary.ModeSetting.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/TextToBinary.PipeStorage.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/TextToBinary.TypeDeclaration.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/TextToBinary.SubgroupDispatch.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/TextWordGet.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/UnitSPIRV.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/ValidateFixtures.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/Validate.Capability.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/Validate.CFG.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/Validate.Layout.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/Validate.Storage.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/Validate.SSA.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/ValidateID.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/ValidationState.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
-
-    add_executable(UnitSPIRV ${TEST_SOURCES})
-    spvtools_default_compile_options(UnitSPIRV)
-    if(${COMPILER_IS_LIKE_GNU})
-      target_compile_options(UnitSPIRV PRIVATE -Wno-undef)
-    endif()
-    if(${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
-      # Disable C4503 "decorated name length exceeded" warning, triggered
-      # by some heavily templated types.
-      # We don't care much about that in test code.
-      # Important to do since we have warnings-as-errors.
-      target_compile_options(UnitSPIRV PRIVATE /wd4503)
-    endif()
-    target_include_directories(UnitSPIRV PRIVATE
-      ${spirv-tools_SOURCE_DIR}
-      ${gmock_SOURCE_DIR}/include ${gtest_SOURCE_DIR}/include)
-    target_link_libraries(UnitSPIRV PRIVATE ${SPIRV_TOOLS} gmock)
-    add_test(NAME spirv-tools-testsuite COMMAND UnitSPIRV)
+    )
+    add_spvtools_unittest(UnitSPIRV "${TEST_SOURCES}" ${SPIRV_TOOLS})
   else()
     message(STATUS "Did not find googletest, tests will not be built."
       "To enable tests place googletest in '<spirv-dir>/external/googletest'.")

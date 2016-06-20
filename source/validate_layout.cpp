@@ -26,14 +26,16 @@
 
 // Source code for logical layout validation as described in section 2.4
 
-#include "spirv-tools/libspirv.h"
-#include "validate_passes.h"
+#include "validate.h"
+
+#include <cassert>
 
 #include "diagnostic.h"
 #include "opcode.h"
 #include "operand.h"
-
-#include <cassert>
+#include "spirv-tools/libspirv.h"
+#include "val/Function.h"
+#include "val/ValidationState.h"
 
 using libspirv::ValidationState_t;
 using libspirv::kLayoutMemoryModel;
@@ -42,7 +44,6 @@ using libspirv::kLayoutFunctionDefinitions;
 using libspirv::FunctionDecl;
 
 namespace {
-
 // Module scoped instructions are processed by determining if the opcode
 // is part of the current layout section. If it is not then the next sections is
 // checked.
@@ -81,19 +82,20 @@ spv_result_t FunctionScopedInstructions(ValidationState_t& _,
                                         SpvOp opcode) {
   if (_.isOpcodeInCurrentLayoutSection(opcode)) {
     switch (opcode) {
-      case SpvOpFunction:
+      case SpvOpFunction: {
         if (_.in_function_body()) {
           return _.diag(SPV_ERROR_INVALID_LAYOUT)
                  << "Cannot declare a function in a function body";
         }
-        spvCheckReturn(_.get_functions().RegisterFunction(
-            inst->result_id, inst->type_id,
-            inst->words[inst->operands[2].offset],
-            inst->words[inst->operands[3].offset]));
+        auto control_mask = static_cast<SpvFunctionControlMask>(
+            inst->words[inst->operands[2].offset]);
+        spvCheckReturn(
+            _.RegisterFunction(inst->result_id, inst->type_id, control_mask,
+                               inst->words[inst->operands[3].offset]));
         if (_.getLayoutSection() == kLayoutFunctionDefinitions)
-          spvCheckReturn(_.get_functions().RegisterSetFunctionDeclType(
+          spvCheckReturn(_.get_current_function().RegisterSetFunctionDeclType(
               FunctionDecl::kFunctionDeclDefinition));
-        break;
+      } break;
 
       case SpvOpFunctionParameter:
         if (_.in_function_body() == false) {
@@ -101,12 +103,13 @@ spv_result_t FunctionScopedInstructions(ValidationState_t& _,
                                                      "instructions must be in "
                                                      "a function body";
         }
-        if (_.get_functions().get_block_count() != 0) {
+        if (_.get_current_function().get_block_count() != 0) {
           return _.diag(SPV_ERROR_INVALID_LAYOUT)
-                 << "Function parameters must only appear immediately after the "
+                 << "Function parameters must only appear immediately after "
+                    "the "
                     "function definition";
         }
-        spvCheckReturn(_.get_functions().RegisterFunctionParameter(
+        spvCheckReturn(_.get_current_function().RegisterFunctionParameter(
             inst->result_id, inst->type_id));
         break;
 
@@ -119,17 +122,17 @@ spv_result_t FunctionScopedInstructions(ValidationState_t& _,
           return _.diag(SPV_ERROR_INVALID_LAYOUT)
                  << "Function end cannot be called in blocks";
         }
-        if (_.get_functions().get_block_count() == 0 &&
+        if (_.get_current_function().get_block_count() == 0 &&
             _.getLayoutSection() == kLayoutFunctionDefinitions) {
           return _.diag(SPV_ERROR_INVALID_LAYOUT) << "Function declarations "
                                                      "must appear before "
                                                      "function definitions.";
         }
-        spvCheckReturn(_.get_functions().RegisterFunctionEnd());
         if (_.getLayoutSection() == kLayoutFunctionDeclarations) {
-          spvCheckReturn(_.get_functions().RegisterSetFunctionDeclType(
+          spvCheckReturn(_.get_current_function().RegisterSetFunctionDeclType(
               FunctionDecl::kFunctionDeclDeclaration));
         }
+        spvCheckReturn(_.RegisterFunctionEnd());
         break;
 
       case SpvOpLine:
@@ -149,13 +152,14 @@ spv_result_t FunctionScopedInstructions(ValidationState_t& _,
         }
         if (_.getLayoutSection() == kLayoutFunctionDeclarations) {
           _.progressToNextLayoutSectionOrder();
-          spvCheckReturn(_.get_functions().RegisterSetFunctionDeclType(
+          spvCheckReturn(_.get_current_function().RegisterSetFunctionDeclType(
               FunctionDecl::kFunctionDeclDefinition));
         }
         break;
 
       default:
-        if (_.getLayoutSection() == kLayoutFunctionDeclarations) {
+        if (_.getLayoutSection() == kLayoutFunctionDeclarations &&
+            _.in_function_body()) {
           return _.diag(SPV_ERROR_INVALID_LAYOUT)
                  << "A function must begin with a label";
         } else {
@@ -173,7 +177,7 @@ spv_result_t FunctionScopedInstructions(ValidationState_t& _,
   }
   return SPV_SUCCESS;
 }
-}
+}  /// namespace
 
 namespace libspirv {
 // TODO(umar): Check linkage capabilities for function declarations
@@ -204,4 +208,4 @@ spv_result_t ModuleLayoutPass(ValidationState_t& _,
   }  // switch(getLayoutSection())
   return SPV_SUCCESS;
 }
-}
+}  /// namespace libspirv

@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright (c) 2016 Google.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and/or associated documentation files (the
@@ -24,32 +24,11 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
-#ifndef LIBSPIRV_VALIDATE_PASSES_H_
-#define LIBSPIRV_VALIDATE_PASSES_H_
+#ifndef LIBSPIRV_SPIRV_TARGET_ENV_H_
+#define LIBSPIRV_SPIRV_TARGET_ENV_H_
 
-#include "binary.h"
-#include "validate.h"
+// Parses s into *env and returns true if successful.  If unparsable, returns
+// false and sets *env to SPV_ENV_UNIVERSAL_1_0.
+bool spvParseTargetEnv(const char* s, spv_target_env* env);
 
-namespace libspirv
-{
-// TODO(umar): Better docs
-
-// Performs logical layout validation as described in section 2.4 of the SPIR-V spec
-spv_result_t ModuleLayoutPass(ValidationState_t& _,
-                              const spv_parsed_instruction_t* inst);
-
-// Performs Control Flow Graph validation of a module
-spv_result_t CfgPass(ValidationState_t& _,
-                     const spv_parsed_instruction_t* inst);
-
-// Performs SSA validation of a module
-spv_result_t SsaPass(ValidationState_t& _,
-                     const spv_parsed_instruction_t* inst);
-
-// Performs instruction validation.
-spv_result_t InstructionPass(ValidationState_t& _,
-                             const spv_parsed_instruction_t* inst);
-
-}
-
-#endif
+#endif  // LIBSPIRV_SPIRV_TARGET_ENV_H_

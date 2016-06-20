@@ -30,6 +30,8 @@
 
 namespace {
 
+using spvtest::ScopedContext;
+
 TEST(BinaryDestroy, Null) {
   // There is no state or return value to check. Just check
   // for the ability to call the API without abnormal termination.
@@ -43,8 +45,8 @@ TEST_F(BinaryDestroySomething, Default) {
   // Use a binary object constructed by the API instead of rolling our own.
   SetText("OpSource OpenCL_C 120");
   spv_binary my_binary = nullptr;
-  ASSERT_EQ(SPV_SUCCESS, spvTextToBinary(context, text.str, text.length,
-                                         &my_binary, &diagnostic));
+  ASSERT_EQ(SPV_SUCCESS, spvTextToBinary(ScopedContext().context, text.str,
+                                         text.length, &my_binary, &diagnostic));
   ASSERT_NE(nullptr, my_binary);
   spvBinaryDestroy(my_binary);
 }

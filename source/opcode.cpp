@@ -32,6 +32,7 @@
 #include <cstdlib>
 
 #include "instruction.h"
+#include "macro.h"
 #include "spirv-tools/libspirv.h"
 #include "spirv_constant.h"
 #include "spirv_endian.h"
@@ -40,15 +41,11 @@ namespace {
 
 // Descriptions of each opcode.  Each entry describes the format of the
 // instruction that follows a particular opcode.
-//
-// Most fields are initialized statically by including an automatically
-// generated file.
-// The operandTypes fields are initialized during spvOpcodeInitialize().
-//
-// TODO(dneto): Some of the macros are quite unreadable.  We could make
-// good use of constexpr functions, but some compilers don't support that yet.
-const spv_opcode_desc_t opcodeTableEntries[] = {
-#include "core.insts.inc"
+const spv_opcode_desc_t opcodeTableEntries_1_0[] = {
+#include "core.insts-1.0.inc"
+};
+const spv_opcode_desc_t opcodeTableEntries_1_1[] = {
+#include "core.insts-1.1.inc"
 };
 
 }  // anonymous namespace
@@ -92,21 +89,26 @@ void spvOpcodeSplit(const uint32_t word, uint16_t* pWordCount,
   }
 }
 
-// Evaluates to the number of elements of array A.
-// If we could use constexpr, then we could make this a template function.
-// If the source arrays were std::array, then we could have used
-// std::array::size.
-#define ARRAY_SIZE(A) (static_cast<uint32_t>(sizeof(A) / sizeof(A[0])))
-
-spv_result_t spvOpcodeTableGet(spv_opcode_table* pInstTable) {
+spv_result_t spvOpcodeTableGet(spv_opcode_table* pInstTable,
+                               spv_target_env env) {
   if (!pInstTable) return SPV_ERROR_INVALID_POINTER;
 
-  static const spv_opcode_table_t table = {ARRAY_SIZE(opcodeTableEntries),
-                                           opcodeTableEntries};
+  static const spv_opcode_table_t table_1_0 = {
+      ARRAY_SIZE(opcodeTableEntries_1_0), opcodeTableEntries_1_0};
+  static const spv_opcode_table_t table_1_1 = {
+      ARRAY_SIZE(opcodeTableEntries_1_1), opcodeTableEntries_1_1};
 
-  *pInstTable = &table;
-
-  return SPV_SUCCESS;
+  switch (env) {
+    case SPV_ENV_UNIVERSAL_1_0:
+    case SPV_ENV_VULKAN_1_0:
+      *pInstTable = &table_1_0;
+      return SPV_SUCCESS;
+    case SPV_ENV_UNIVERSAL_1_1:
+      *pInstTable = &table_1_1;
+      return SPV_SUCCESS;
+  }
+  assert(0 && "Unknown spv_target_env in spvOpcodeTableGet()");
+  return SPV_ERROR_INVALID_TABLE;
 }
 
 spv_result_t spvOpcodeTableNameLookup(const spv_opcode_table table,
@@ -172,10 +174,11 @@ void spvInstructionCopy(const uint32_t* words, const SpvOp opcode,
 }
 
 const char* spvOpcodeString(const SpvOp opcode) {
-  for (uint32_t i = 0;
-       i < sizeof(opcodeTableEntries) / sizeof(spv_opcode_desc_t); ++i) {
-    if (opcodeTableEntries[i].opcode == opcode)
-      return opcodeTableEntries[i].name;
+  // Use the latest SPIR-V version, which should be backward-compatible with all
+  // previous ones.
+  for (uint32_t i = 0; i < ARRAY_SIZE(opcodeTableEntries_1_1); ++i) {
+    if (opcodeTableEntries_1_1[i].opcode == opcode)
+      return opcodeTableEntries_1_1[i].name;
   }
   assert(0 && "Unreachable!");
   return "unknown";
@@ -223,14 +226,14 @@ int32_t spvOpcodeIsComposite(const SpvOp opcode) {
   }
 }
 
-int32_t spvOpcodeIsPointer(const SpvOp opcode) {
+int32_t spvOpcodeReturnsLogicalPointer(const SpvOp opcode) {
   switch (opcode) {
     case SpvOpVariable:
     case SpvOpAccessChain:
-    case SpvOpPtrAccessChain:
     case SpvOpInBoundsAccessChain:
-    case SpvOpInBoundsPtrAccessChain:
     case SpvOpFunctionParameter:
+    case SpvOpImageTexelPointer:
+    case SpvOpCopyObject:
       return true;
     default:
       return false;

@@ -59,10 +59,6 @@ Options:
       argv0, argv0);
 }
 
-const char kBuildVersion[] =
-#include "build-version.inc"
-    ;
-
 int main(int argc, char** argv) {
   const char* inFile = nullptr;
   const char* outFile = nullptr;
@@ -100,9 +96,9 @@ int main(int argc, char** argv) {
             print_usage(argv[0]);
             return 0;
           } else if (0 == strcmp(argv[argi], "--version")) {
-            printf("%s\n", kBuildVersion);
+            printf("%s\n", spvSoftwareVersionDetailsString());
             printf("Target: %s\n",
-                   spvTargetEnvDescription(SPV_ENV_UNIVERSAL_1_0));
+                   spvTargetEnvDescription(SPV_ENV_UNIVERSAL_1_1));
             return 0;
           } else {
             print_usage(argv[0]);
@@ -178,7 +174,7 @@ int main(int argc, char** argv) {
   spv_text text;
   spv_text* textOrNull = print_to_stdout ? nullptr : &text;
   spv_diagnostic diagnostic = nullptr;
-  spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_0);
+  spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_1);
   spv_result_t error =
       spvBinaryToText(context, contents.data(), contents.size(), options,
                       textOrNull, &diagnostic);

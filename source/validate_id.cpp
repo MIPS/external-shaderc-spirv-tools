@@ -24,7 +24,10 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
+#include "validate.h"
+
 #include <cassert>
+
 #include <iostream>
 #include <unordered_map>
 #include <vector>
@@ -33,7 +36,7 @@
 #include "instruction.h"
 #include "opcode.h"
 #include "spirv-tools/libspirv.h"
-#include "validate.h"
+#include "val/ValidationState.h"
 
 #define spvCheck(condition, action) \
   if (condition) {                  \
@@ -50,6 +53,8 @@ class idUsage {
           const spv_operand_table operandTableArg,
           const spv_ext_inst_table extInstTableArg,
           const spv_instruction_t* pInsts, const uint64_t instCountArg,
+          const SpvMemoryModel memoryModelArg,
+          const SpvAddressingModel addressingModelArg,
           const UseDefTracker& usedefs,
           const std::vector<uint32_t>& entry_points, spv_position positionArg,
           spv_diagnostic* pDiagnosticArg)
@@ -58,6 +63,8 @@ class idUsage {
         extInstTable(extInstTableArg),
         firstInst(pInsts),
         instCount(instCountArg),
+        memoryModel(memoryModelArg),
+        addressingModel(addressingModelArg),
         position(positionArg),
         pDiagnostic(pDiagnosticArg),
         usedefs_(usedefs),
@@ -74,6 +81,8 @@ class idUsage {
   const spv_ext_inst_table extInstTable;
   const spv_instruction_t* const firstInst;
   const uint64_t instCount;
+  const SpvMemoryModel memoryModel;
+  const SpvAddressingModel addressingModel;
   spv_position position;
   spv_diagnostic* pDiagnostic;
   UseDefTracker usedefs_;
@@ -271,13 +280,13 @@ bool idUsage::isValid<SpvOpTypeSampler>(const spv_instruction_t*,
 bool aboveZero(const std::vector<uint32_t>& constWords,
                const std::vector<uint32_t>& typeWords) {
   const uint32_t width = typeWords[2];
-  const bool is_signed = typeWords[3];
+  const bool is_signed = typeWords[3] > 0;
   const uint32_t loWord = constWords[3];
   if (width > 32) {
     // The spec currently doesn't allow integers wider than 64 bits.
     const uint32_t hiWord = constWords[4];  // Must exist, per spec.
     if (is_signed && (hiWord >> 31)) return false;
-    return loWord | hiWord;
+    return (loWord | hiWord) > 0;
   } else {
     if (is_signed && (loWord >> 31)) return false;
     return loWord > 0;
@@ -755,7 +764,9 @@ bool idUsage::isValid<SpvOpLoad>(const spv_instruction_t* inst,
            return false);
   auto pointerIndex = 3;
   auto pointer = usedefs_.FindDef(inst->words[pointerIndex]);
-  if (!pointer.first || !spvOpcodeIsPointer(pointer.second.opcode)) {
+  if (!pointer.first ||
+      (addressingModel == SpvAddressingModelLogical &&
+       !spvOpcodeReturnsLogicalPointer(pointer.second.opcode))) {
     DIAG(pointerIndex) << "OpLoad Pointer <id> '" << inst->words[pointerIndex]
                        << "' is not a pointer.";
     return false;
@@ -783,13 +794,20 @@ bool idUsage::isValid<SpvOpStore>(const spv_instruction_t* inst,
                                   const spv_opcode_desc) {
   auto pointerIndex = 1;
   auto pointer = usedefs_.FindDef(inst->words[pointerIndex]);
-  if (!pointer.first || !spvOpcodeIsPointer(pointer.second.opcode)) {
+  if (!pointer.first ||
+      (addressingModel == SpvAddressingModelLogical &&
+       !spvOpcodeReturnsLogicalPointer(pointer.second.opcode))) {
     DIAG(pointerIndex) << "OpStore Pointer <id> '" << inst->words[pointerIndex]
                        << "' is not a pointer.";
     return false;
   }
   auto pointerType = usedefs_.FindDef(pointer.second.type_id);
-  assert(pointerType.first);
+  if (!pointer.first || pointerType.second.opcode != SpvOpTypePointer) {
+    DIAG(pointerIndex) << "OpStore type for pointer <id> '"
+                       << inst->words[pointerIndex]
+                       << "' is not a pointer type.";
+    return false;
+  }
   auto type = usedefs_.FindDef(pointerType.second.words[3]);
   assert(type.first);
   spvCheck(SpvOpTypeVoid == type.second.opcode, DIAG(pointerIndex)
@@ -1692,12 +1710,11 @@ bool idUsage::isValid<SpvOpReturnValue>(const spv_instruction_t* inst,
                      << value.second.type_id << "' is missing or void.";
     return false;
   }
-  if (SpvOpTypePointer == valueType.second.opcode) {
-    DIAG(valueIndex) << "OpReturnValue value's type <id> '"
-                     << value.second.type_id
-                     << "' is a pointer, but a pointer can only be an operand "
-                        "to OpLoad, OpStore, OpAccessChain, or "
-                        "OpInBoundsAccessChain.";
+  if (addressingModel == SpvAddressingModelLogical &&
+      SpvOpTypePointer == valueType.second.opcode) {
+    DIAG(valueIndex)
+        << "OpReturnValue value's type <id> '" << value.second.type_id
+        << "' is a pointer, which is invalid in the Logical addressing model.";
     return false;
   }
   // NOTE: Find OpFunction
@@ -2332,6 +2349,7 @@ spv_result_t spvValidateInstructionIDs(const spv_instruction_t* pInsts,
                                        spv_position position,
                                        spv_diagnostic* pDiag) {
   idUsage idUsage(opcodeTable, operandTable, extInstTable, pInsts, instCount,
+                  state.getMemoryModel(), state.getAddressingModel(),
                   state.usedefs(), state.entry_points(), position, pDiag);
   for (uint64_t instIndex = 0; instIndex < instCount; ++instIndex) {
     spvCheck(!idUsage.isValid(&pInsts[instIndex]), return SPV_ERROR_INVALID_ID);

@@ -28,7 +28,7 @@
 
 #include <gmock/gmock.h>
 #include "TestFixture.h"
-#include "spirv/OpenCL.std.h"
+#include "spirv/1.0/OpenCL.std.h"
 
 namespace {
 
@@ -153,8 +153,8 @@ INSTANTIATE_TEST_CASE_P(
         CASE2(Modf, modf),
         CASE1(Nan, nan),
         CASE2(Nextafter, nextafter),
-        CASE3(Pow, pow),
-        CASE1(Pown, pown),
+        CASE2(Pow, pow),
+        CASE2(Pown, pown),
         CASE2(Powr, powr),
         CASE2(Remainder, remainder),
         CASE3(Remquo, remquo),
@@ -233,8 +233,8 @@ INSTANTIATE_TEST_CASE_P(
         CASE1(Popcount, popcount),
         CASE3(SMad24, s_mad24),
         CASE3(UMad24, u_mad24),
-        CASE3(SMul24, s_mul24),
-        CASE3(UMul24, u_mul24), // enum value 170
+        CASE2(SMul24, s_mul24),
+        CASE2(UMul24, u_mul24), // enum value 170
         CASE1(UAbs, u_abs), // enum value 201
         CASE2(UAbs_diff, u_abs_diff),
         CASE2(UMul_hi, u_mul_hi),

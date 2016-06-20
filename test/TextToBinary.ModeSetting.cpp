@@ -29,15 +29,21 @@
 
 #include "UnitSPIRV.h"
 
-#include "gmock/gmock.h"
 #include "TestFixture.h"
+#include "gmock/gmock.h"
 
 namespace {
 
+using ::testing::Combine;
+using ::testing::Eq;
+using ::testing::TestWithParam;
+using ::testing::Values;
+using ::testing::ValuesIn;
 using spvtest::EnumCase;
 using spvtest::MakeInstruction;
 using spvtest::MakeVector;
-using ::testing::Eq;
+using std::get;
+using std::tuple;
 
 // Test OpMemoryModel
 
@@ -56,7 +62,7 @@ struct MemoryModelCase {
 };
 
 using OpMemoryModelTest =
-    spvtest::TextToBinaryTestBase<::testing::TestWithParam<MemoryModelCase>>;
+    spvtest::TextToBinaryTestBase<TestWithParam<MemoryModelCase>>;
 
 TEST_P(OpMemoryModelTest, AnyMemoryModelCase) {
   const std::string input = "OpMemoryModel " + GetParam().addressing_name +
@@ -74,7 +80,7 @@ TEST_P(OpMemoryModelTest, AnyMemoryModelCase) {
   }
 // clang-format off
 INSTANTIATE_TEST_CASE_P(TextToBinaryMemoryModel, OpMemoryModelTest,
-                        ::testing::ValuesIn(std::vector<MemoryModelCase>{
+                        ValuesIn(std::vector<MemoryModelCase>{
                           // These cases exercise each addressing model, and
                           // each memory model, but not necessarily in
                           // combination.
@@ -106,7 +112,7 @@ struct EntryPointCase {
 };
 
 using OpEntryPointTest =
-    spvtest::TextToBinaryTestBase<::testing::TestWithParam<EntryPointCase>>;
+    spvtest::TextToBinaryTestBase<TestWithParam<EntryPointCase>>;
 
 TEST_P(OpEntryPointTest, AnyEntryPointCase) {
   // TODO(dneto): utf-8, escaping, quoting cases for entry point name.
@@ -121,7 +127,7 @@ TEST_P(OpEntryPointTest, AnyEntryPointCase) {
 // clang-format off
 #define CASE(NAME) SpvExecutionModel##NAME, #NAME
 INSTANTIATE_TEST_CASE_P(TextToBinaryEntryPoint, OpEntryPointTest,
-                        ::testing::ValuesIn(std::vector<EntryPointCase>{
+                        ValuesIn(std::vector<EntryPointCase>{
                           { CASE(Vertex), "" },
                           { CASE(TessellationControl), "my tess" },
                           { CASE(TessellationEvaluation), "really fancy" },
@@ -139,58 +145,68 @@ TEST_F(OpEntryPointTest, WrongModel) {
 }
 
 // Test OpExecutionMode
-
 using OpExecutionModeTest = spvtest::TextToBinaryTestBase<
-    ::testing::TestWithParam<EnumCase<SpvExecutionMode>>>;
+    TestWithParam<tuple<spv_target_env, EnumCase<SpvExecutionMode>>>>;
 
 TEST_P(OpExecutionModeTest, AnyExecutionMode) {
   // This string should assemble, but should not validate.
   std::stringstream input;
-  input << "OpExecutionMode %1 " << GetParam().name();
-  for (auto operand : GetParam().operands()) input << " " << operand;
-  EXPECT_THAT(CompiledInstructions(input.str()),
-              Eq(MakeInstruction(SpvOpExecutionMode, {1, GetParam().value()},
-                                 GetParam().operands())));
+  input << "OpExecutionMode %1 " << get<1>(GetParam()).name();
+  for (auto operand : get<1>(GetParam()).operands()) input << " " << operand;
+  EXPECT_THAT(
+      CompiledInstructions(input.str(), get<0>(GetParam())),
+      Eq(MakeInstruction(SpvOpExecutionMode, {1, get<1>(GetParam()).value()},
+                         get<1>(GetParam()).operands())));
 }
 
 #define CASE(NAME) SpvExecutionMode##NAME, #NAME
 INSTANTIATE_TEST_CASE_P(
     TextToBinaryExecutionMode, OpExecutionModeTest,
-    ::testing::ValuesIn(std::vector<EnumCase<SpvExecutionMode>>{
-        // The operand literal values are arbitrarily chosen,
-        // but there are the right number of them.
-        {CASE(Invocations), {101}},
-        {CASE(SpacingEqual), {}},
-        {CASE(SpacingFractionalEven), {}},
-        {CASE(SpacingFractionalOdd), {}},
-        {CASE(VertexOrderCw), {}},
-        {CASE(VertexOrderCcw), {}},
-        {CASE(PixelCenterInteger), {}},
-        {CASE(OriginUpperLeft), {}},
-        {CASE(OriginLowerLeft), {}},
-        {CASE(EarlyFragmentTests), {}},
-        {CASE(PointMode), {}},
-        {CASE(Xfb), {}},
-        {CASE(DepthReplacing), {}},
-        {CASE(DepthGreater), {}},
-        {CASE(DepthLess), {}},
-        {CASE(DepthUnchanged), {}},
-        {CASE(LocalSize), {64, 1, 2}},
-        {CASE(LocalSizeHint), {8, 2, 4}},
-        {CASE(InputPoints), {}},
-        {CASE(InputLines), {}},
-        {CASE(InputLinesAdjacency), {}},
-        {CASE(Triangles), {}},
-        {CASE(InputTrianglesAdjacency), {}},
-        {CASE(Quads), {}},
-        {CASE(Isolines), {}},
-        {CASE(OutputVertices), {21}},
-        {CASE(OutputPoints), {}},
-        {CASE(OutputLineStrip), {}},
-        {CASE(OutputTriangleStrip), {}},
-        {CASE(VecTypeHint), {96}},
-        {CASE(ContractionOff), {}},
-    }),);
+    Combine(Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1),
+            ValuesIn(std::vector<EnumCase<SpvExecutionMode>>{
+                // The operand literal values are arbitrarily chosen,
+                // but there are the right number of them.
+                {CASE(Invocations), {101}},
+                {CASE(SpacingEqual), {}},
+                {CASE(SpacingFractionalEven), {}},
+                {CASE(SpacingFractionalOdd), {}},
+                {CASE(VertexOrderCw), {}},
+                {CASE(VertexOrderCcw), {}},
+                {CASE(PixelCenterInteger), {}},
+                {CASE(OriginUpperLeft), {}},
+                {CASE(OriginLowerLeft), {}},
+                {CASE(EarlyFragmentTests), {}},
+                {CASE(PointMode), {}},
+                {CASE(Xfb), {}},
+                {CASE(DepthReplacing), {}},
+                {CASE(DepthGreater), {}},
+                {CASE(DepthLess), {}},
+                {CASE(DepthUnchanged), {}},
+                {CASE(LocalSize), {64, 1, 2}},
+                {CASE(LocalSizeHint), {8, 2, 4}},
+                {CASE(InputPoints), {}},
+                {CASE(InputLines), {}},
+                {CASE(InputLinesAdjacency), {}},
+                {CASE(Triangles), {}},
+                {CASE(InputTrianglesAdjacency), {}},
+                {CASE(Quads), {}},
+                {CASE(Isolines), {}},
+                {CASE(OutputVertices), {21}},
+                {CASE(OutputPoints), {}},
+                {CASE(OutputLineStrip), {}},
+                {CASE(OutputTriangleStrip), {}},
+                {CASE(VecTypeHint), {96}},
+                {CASE(ContractionOff), {}},
+            })), );
+
+INSTANTIATE_TEST_CASE_P(
+    TextToBinaryExecutionModeV11, OpExecutionModeTest,
+    Combine(Values(SPV_ENV_UNIVERSAL_1_1),
+            ValuesIn(std::vector<EnumCase<SpvExecutionMode>>{
+                {CASE(Initializer)},
+                {CASE(Finalizer)},
+                {CASE(SubgroupSize), {12}},
+                {CASE(SubgroupsPerWorkgroup), {64}}})), );
 #undef CASE
 
 TEST_F(OpExecutionModeTest, WrongMode) {
@@ -206,8 +222,8 @@ TEST_F(OpExecutionModeTest, TooManyModes) {
 
 // Test OpCapability
 
-using OpCapabilityTest = spvtest::TextToBinaryTestBase<
-    ::testing::TestWithParam<EnumCase<SpvCapability>>>;
+using OpCapabilityTest =
+    spvtest::TextToBinaryTestBase<TestWithParam<EnumCase<SpvCapability>>>;
 
 TEST_P(OpCapabilityTest, AnyCapability) {
   const std::string input = "OpCapability " + GetParam().name();
@@ -218,7 +234,7 @@ TEST_P(OpCapabilityTest, AnyCapability) {
 // clang-format off
 #define CASE(NAME) { SpvCapability##NAME, #NAME }
 INSTANTIATE_TEST_CASE_P(TextToBinaryCapability, OpCapabilityTest,
-                        ::testing::ValuesIn(std::vector<EnumCase<SpvCapability>>{
+                        ValuesIn(std::vector<EnumCase<SpvCapability>>{
                             CASE(Matrix),
                             CASE(Shader),
                             CASE(Geometry),

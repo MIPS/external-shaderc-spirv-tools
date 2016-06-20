@@ -27,8 +27,10 @@
 // Validation tests for Logical Layout
 
 #include <gmock/gmock.h>
+#include "TestFixture.h"
 #include "UnitSPIRV.h"
 #include "ValidateFixtures.h"
+#include "source/assembly_grammar.h"
 
 #include <sstream>
 #include <string>
@@ -37,23 +39,83 @@
 
 namespace {
 
-
-using std::pair;
+using spvtest::ScopedContext;
+using std::get;
 using std::make_pair;
-using std::stringstream;
+using std::ostringstream;
+using std::pair;
 using std::string;
 using std::tuple;
 using std::vector;
-
 using testing::Combine;
 using testing::Values;
 using testing::ValuesIn;
 
-using ValidateCapability =
-    spvtest::ValidateBase<tuple<string, pair<string, vector<string>>>>;
+// Parameter for validation test fixtures.  The first string is a capability
+// name that will begin the assembly under test, the second the remainder
+// assembly, and the vector at the end determines whether the test expects
+// success or failure.  See below for details and convenience methods to access
+// each one.
+//
+// The assembly to test is composed from a variable top line and a fixed
+// remainder.  The top line will be an OpCapability instruction, while the
+// remainder will be some assembly text that succeeds or fails to assemble
+// depending on which capability was chosen.  For instance, the following will
+// succeed:
+//
+// OpCapability Pipes ; implies Kernel
+// OpLifetimeStop %1 0 ; requires Kernel
+//
+// and the following will fail:
+//
+// OpCapability Kernel
+// %1 = OpTypeNamedBarrier ; requires NamedBarrier
+//
+// So how does the test parameter capture which capabilities should cause
+// success and which shouldn't?  The answer is in the last element: it's a
+// vector of capabilities that make the remainder assembly succeed.  So if the
+// first-line capability exists in that vector, success is expected; otherwise,
+// failure is expected in the tests.
+//
+// We will use testing::Combine() to vary the first line: when we combine
+// AllCapabilities() with a single remainder assembly, we generate enough test
+// cases to try the assembly with every possible capability that could be
+// declared. However, Combine() only produces tuples -- it cannot produce, say,
+// a struct.  Therefore, this type must be a tuple.
+using CapTestParameter = tuple<string, pair<string, vector<string>>>;
+
+const string& Capability(const CapTestParameter& p) { return get<0>(p); }
+const string& Remainder(const CapTestParameter& p) { return get<1>(p).first; }
+const vector<string>& MustSucceed(const CapTestParameter& p) {
+  return get<1>(p).second;
+}
+
+// Creates assembly to test from p.
+string MakeAssembly(const CapTestParameter& p) {
+  ostringstream ss;
+  const string& capability = Capability(p);
+  if (!capability.empty()) {
+    ss << "OpCapability " << capability << "\n";
+  }
+  ss << Remainder(p);
+  return ss.str();
+}
+
+// Expected validation result for p.
+spv_result_t ExpectedResult(const CapTestParameter& p) {
+  const auto& caps = MustSucceed(p);
+  auto found = find(begin(caps), end(caps), Capability(p));
+  return (found == end(caps)) ? SPV_ERROR_INVALID_CAPABILITY : SPV_SUCCESS;
+}
+
+// Assembles using v1.0, unless the parameter's capability requires v1.1.
+using ValidateCapability = spvtest::ValidateBase<CapTestParameter>;
+
+// Always assembles using v1.1.
+using ValidateCapabilityV11 = spvtest::ValidateBase<CapTestParameter>;
 
 TEST_F(ValidateCapability, Default) {
-    const char str[] = R"(
+  const char str[] = R"(
             OpCapability Kernel
             OpCapability Matrix
             OpMemoryModel Logical OpenCL
@@ -68,6 +130,71 @@ TEST_F(ValidateCapability, Default) {
 
 // clang-format off
 const vector<string>& AllCapabilities() {
+  static const auto r = new vector<string>{
+    "",
+    "Matrix",
+    "Shader",
+    "Geometry",
+    "Tessellation",
+    "Addresses",
+    "Linkage",
+    "Kernel",
+    "Vector16",
+    "Float16Buffer",
+    "Float16",
+    "Float64",
+    "Int64",
+    "Int64Atomics",
+    "ImageBasic",
+    "ImageReadWrite",
+    "ImageMipmap",
+    "Pipes",
+    "Groups",
+    "DeviceEnqueue",
+    "LiteralSampler",
+    "AtomicStorage",
+    "Int16",
+    "TessellationPointSize",
+    "GeometryPointSize",
+    "ImageGatherExtended",
+    "StorageImageMultisample",
+    "UniformBufferArrayDynamicIndexing",
+    "SampledImageArrayDynamicIndexing",
+    "StorageBufferArrayDynamicIndexing",
+    "StorageImageArrayDynamicIndexing",
+    "ClipDistance",
+    "CullDistance",
+    "ImageCubeArray",
+    "SampleRateShading",
+    "ImageRect",
+    "SampledRect",
+    "GenericPointer",
+    "Int8",
+    "InputAttachment",
+    "SparseResidency",
+    "MinLod",
+    "Sampled1D",
+    "Image1D",
+    "SampledCubeArray",
+    "SampledBuffer",
+    "ImageBuffer",
+    "ImageMSArray",
+    "StorageImageExtendedFormats",
+    "ImageQuery",
+    "DerivativeControl",
+    "InterpolationFunction",
+    "TransformFeedback",
+    "GeometryStreams",
+    "StorageImageReadWithoutFormat",
+    "StorageImageWriteWithoutFormat",
+    "MultiViewport",
+    "SubgroupDispatch",
+    "NamedBarrier",
+    "PipeStorage"};
+  return *r;
+}
+
+const vector<string>& AllV10Capabilities() {
   static const auto r = new vector<string>{
     "",
     "Matrix",
@@ -252,7 +379,10 @@ const vector<string>& KernelDependencies() {
   "Pipes",
   "DeviceEnqueue",
   "LiteralSampler",
-  "Int8"};
+  "Int8",
+  "SubgroupDispatch",
+  "NamedBarrier",
+  "PipeStorage"};
   return *r;
 }
 
@@ -486,8 +616,25 @@ make_pair(string(kGLSL450MemoryModel) +
 make_pair(string(kGLSL450MemoryModel) +
           "OpEntryPoint Kernel %func \"shader\" "
           "OpExecutionMode %func ContractionOff" +
-          string(kVoidFVoid), KernelDependencies())
-)),);
+          string(kVoidFVoid), KernelDependencies()))),);
+
+// clang-format on
+
+INSTANTIATE_TEST_CASE_P(
+    ExecutionModeV11, ValidateCapabilityV11,
+    Combine(ValuesIn(AllCapabilities()),
+            Values(make_pair(string(kOpenCLMemoryModel) +
+                                 "OpEntryPoint Kernel %func \"shader\" "
+                                 "OpExecutionMode %func SubgroupSize 1" +
+                                 string(kVoidFVoid),
+                             vector<string>{"SubgroupDispatch"}),
+                   make_pair(
+                       string(kOpenCLMemoryModel) +
+                           "OpEntryPoint Kernel %func \"shader\" "
+                           "OpExecutionMode %func SubgroupsPerWorkgroup 65535" +
+                           string(kVoidFVoid),
+                       vector<string>{"SubgroupDispatch"}))), );
+// clang-format off
 
 INSTANTIATE_TEST_CASE_P(StorageClass, ValidateCapability,
                         Combine(
@@ -623,9 +770,6 @@ make_pair(string(kOpenCLMemoryModel) +
           "OpDecorate %intt RelaxedPrecision\n"
           "%intt = OpTypeInt 32 1\n", ShaderDependencies()),
 make_pair(string(kOpenCLMemoryModel) +
-          "OpDecorate %intt SpecId 1\n"
-          "%intt = OpTypeInt 32 1\n", ShaderDependencies()),
-make_pair(string(kOpenCLMemoryModel) +
           "OpDecorate %intt Block\n"
           "%intt = OpTypeInt 32 1\n", ShaderDependencies()),
 make_pair(string(kOpenCLMemoryModel) +
@@ -747,6 +891,36 @@ make_pair(string(kGLSL450MemoryModel) +
           "%intt = OpTypeInt 32 1\n", KernelDependencies())
 )),);
 
+// clang-format on
+INSTANTIATE_TEST_CASE_P(
+    DecorationSpecId, ValidateCapability,
+    Combine(ValuesIn(AllV10Capabilities()),
+            Values(make_pair(string(kOpenCLMemoryModel) +
+                                 "OpDecorate %intt SpecId 1\n"
+                                 "%intt = OpTypeInt 32 1\n",
+                             ShaderDependencies()))), );
+
+INSTANTIATE_TEST_CASE_P(
+    DecorationV11, ValidateCapabilityV11,
+    Combine(ValuesIn(AllCapabilities()),
+            Values(make_pair(string(kOpenCLMemoryModel) +
+                                 "OpDecorate %p MaxByteOffset 0 "
+                                 "%i32 = OpTypeInt 32 1 "
+                                 "%pi32 = OpTypePointer Workgroup %i32 "
+                                 "%p = OpVariable %pi32 Workgroup ",
+                             AddressesDependencies()),
+                   // Trying to test OpDecorate here, but if this fails due to
+                   // incorrect OpMemoryModel validation, that must also be
+                   // fixed.
+                   make_pair(string("OpMemoryModel Logical OpenCL "
+                                    "OpDecorate %intt SpecId 1 "
+                                    "%intt = OpTypeInt 32 1 "),
+                             KernelDependencies()),
+                   make_pair(string("OpMemoryModel Logical Simple "
+                                    "OpDecorate %intt SpecId 1 "
+                                    "%intt = OpTypeInt 32 1 "),
+                             ShaderDependencies()))), );
+// clang-format off
 
 INSTANTIATE_TEST_CASE_P(BuiltIn, ValidateCapability,
                         Combine(
@@ -908,7 +1082,7 @@ make_pair(string(kOpenCLMemoryModel) +
 // that can be used for operands where IDs are required.  The assembly is valid,
 // apart from not declaring any capabilities required by the operands.
 string ImageOperandsTemplate(const string& operands) {
-  stringstream ss;
+  ostringstream ss;
   // clang-format off
   ss << R"(
 OpCapability Kernel
@@ -947,34 +1121,36 @@ INSTANTIATE_TEST_CASE_P(
                make_pair(ImageOperandsTemplate("Sample|MinLod %izero %fzero"),
                          vector<string>{"MinLod"}),
                make_pair(ImageOperandsTemplate("Lod|Sample %fzero %izero"),
-                         AllCapabilities()))),);
+                         AllCapabilities()))), );
 
 // TODO(umar): Instruction capability checks
 
+// True if capability exists in env.
+bool Exists(const std::string& capability, spv_target_env env) {
+  spv_operand_desc dummy;
+  return SPV_SUCCESS ==
+         libspirv::AssemblyGrammar(ScopedContext(env).context)
+             .lookupOperand(SPV_OPERAND_TYPE_CAPABILITY, capability.c_str(),
+                            capability.size(), &dummy);
+}
+
 TEST_P(ValidateCapability, Capability) {
-  string capability;
-  pair<string, vector<string>> operation;
-  std::tie(capability, operation) = GetParam();
-  stringstream ss;
-  if (!capability.empty()) {
-    ss << "OpCapability " + capability + " ";
-  }
+  const string capability = Capability(GetParam());
+  spv_target_env env =
+      (capability.empty() || Exists(capability, SPV_ENV_UNIVERSAL_1_0))
+          ? SPV_ENV_UNIVERSAL_1_0
+          : SPV_ENV_UNIVERSAL_1_1;
+  const string test_code = MakeAssembly(GetParam());
+  CompileSuccessfully(test_code, env);
+  ASSERT_EQ(ExpectedResult(GetParam()), ValidateInstructions(env)) << test_code;
+}
 
-  ss << operation.first;
-
-  spv_result_t res = SPV_ERROR_INTERNAL;
-  auto& valid_capabilities = operation.second;
-
-  auto it =
-      find(begin(valid_capabilities), end(valid_capabilities), capability);
-  if (it != end(valid_capabilities)) {
-    res = SPV_SUCCESS;
-  } else {
-    res = SPV_ERROR_INVALID_CAPABILITY;
-  }
-
-  CompileSuccessfully(ss.str());
-  ASSERT_EQ(res, ValidateInstructions()) << ss.str();
+TEST_P(ValidateCapabilityV11, Capability) {
+  const string test_code = MakeAssembly(GetParam());
+  CompileSuccessfully(test_code, SPV_ENV_UNIVERSAL_1_1);
+  ASSERT_EQ(ExpectedResult(GetParam()),
+            ValidateInstructions(SPV_ENV_UNIVERSAL_1_1))
+      << test_code;
 }
 
 }  // namespace anonymous

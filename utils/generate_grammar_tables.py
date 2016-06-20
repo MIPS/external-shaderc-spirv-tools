@@ -22,8 +22,10 @@ def make_path_to_file(f):
         f: The file whose ancestor directories are to be created.
     """
     dir = os.path.dirname(os.path.abspath(f))
-    if not os.path.isdir(dir):
+    try:
         os.makedirs(dir)
+    except:
+        pass
 
 
 def populate_capability_bit_mapping_dict(cap_dict):
@@ -35,6 +37,12 @@ def populate_capability_bit_mapping_dict(cap_dict):
     assert cap_dict['category'] == 'ValueEnum'
     assert cap_dict['kind'] == 'Capability'
     for enumerant in cap_dict['enumerants']:
+        if enumerant['value'] > 63:
+            print(
+                "error: capability enumerant {} valued {} is over 63; "
+                "spv_capability_mask_t doesn't support this".format(
+                    enumerant['enumerant'], enumerant['value']))
+            exit(1)
         CAPABILITY_BIT_MAPPING[enumerant['enumerant']] = enumerant['value']
 
 
@@ -133,9 +141,25 @@ class InstInitializer(object):
         self.caps_mask = compose_capability_mask(caps)
         self.operands = [convert_operand_kind(o) for o in operands]
 
+        self.fix_syntax()
+
         operands = [o[0] for o in operands]
         self.ref_type_id = 'IdResultType' in operands
         self.def_result_id = 'IdResult' in operands
+
+
+    def fix_syntax(self):
+        """Fix an instruction's syntax, adjusting for differences between
+        the officially released grammar and how SPIRV-Tools uses the grammar.
+
+        Fixes:
+            - ExtInst should not end with SPV_OPERAND_VARIABLE_ID.
+            https://github.com/KhronosGroup/SPIRV-Tools/issues/233
+        """
+        if (self.opname == 'ExtInst'
+            and self.operands[-1] == 'SPV_OPERAND_TYPE_VARIABLE_ID'):
+           self.operands.pop()
+
 
     def __str__(self):
         template = ['{{"{opname}"', 'SpvOp{opname}', '{caps_mask}',

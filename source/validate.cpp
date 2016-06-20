@@ -25,7 +25,16 @@
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
 #include "validate.h"
-#include "validate_passes.h"
+
+#include <cassert>
+#include <cstdio>
+
+#include <algorithm>
+#include <functional>
+#include <iterator>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "binary.h"
 #include "diagnostic.h"
@@ -35,15 +44,9 @@
 #include "spirv-tools/libspirv.h"
 #include "spirv_constant.h"
 #include "spirv_endian.h"
-
-#include <algorithm>
-#include <cassert>
-#include <cstdio>
-#include <functional>
-#include <iterator>
-#include <sstream>
-#include <string>
-#include <vector>
+#include "val/Construct.h"
+#include "val/Function.h"
+#include "val/ValidationState.h"
 
 using std::function;
 using std::ostream_iterator;
@@ -122,6 +125,7 @@ void DebugInstructionPass(ValidationState_t& _,
     default:
       break;
   }
+
 }
 
 // Collects use-def info about an instruction's IDs.
@@ -184,7 +188,6 @@ spv_result_t spvValidate(const spv_const_context context,
   // TODO(umar): Add validation checks which require the parsing of the entire
   // module. Use the information from the ProcessInstruction pass to make the
   // checks.
-
   if (vstate.unresolvedForwardIdCount() > 0) {
     stringstream ss;
     vector<uint32_t> ids = vstate.unresolvedForwardIds();
@@ -197,6 +200,10 @@ spv_result_t spvValidate(const spv_const_context context,
            << "The following forward referenced IDs have not be defined:\n"
            << id_str.substr(0, id_str.size() - 1);
   }
+
+  // CFG checks are performed after the binary has been parsed
+  // and the CFGPass has collected information about the control flow
+  spvCheckReturn(PerformCfgChecks(vstate));
 
   // NOTE: Copy each instruction for easier processing
   std::vector<spv_instruction_t> instructions;

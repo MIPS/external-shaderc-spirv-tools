@@ -24,36 +24,19 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
-#include <algorithm>
+#include "val/ValidationState.h"
+
 #include <cassert>
-#include <map>
-#include <string>
-#include <unordered_set>
-#include <vector>
 
-#include "spirv/spirv.h"
+#include "val/BasicBlock.h"
+#include "val/Construct.h"
+#include "val/Function.h"
 
-#include "spirv_definition.h"
-#include "validate.h"
-
-using std::find;
+using std::list;
 using std::string;
-using std::unordered_set;
 using std::vector;
 
-using libspirv::kLayoutCapabilities;
-using libspirv::kLayoutExtensions;
-using libspirv::kLayoutExtInstImport;
-using libspirv::kLayoutMemoryModel;
-using libspirv::kLayoutEntryPoint;
-using libspirv::kLayoutExecutionMode;
-using libspirv::kLayoutDebug1;
-using libspirv::kLayoutDebug2;
-using libspirv::kLayoutAnnotations;
-using libspirv::kLayoutTypes;
-using libspirv::kLayoutFunctionDeclarations;
-using libspirv::kLayoutFunctionDefinitions;
-using libspirv::ModuleLayoutSection;
+namespace libspirv {
 
 namespace {
 bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
@@ -207,8 +190,6 @@ bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
 
 }  // anonymous namespace
 
-namespace libspirv {
-
 ValidationState_t::ValidationState_t(spv_diagnostic* diagnostic,
                                      const spv_const_context context)
     : diagnostic_(diagnostic),
@@ -216,9 +197,12 @@ ValidationState_t::ValidationState_t(spv_diagnostic* diagnostic,
       unresolved_forward_ids_{},
       operand_names_{},
       current_layout_section_(kLayoutCapabilities),
-      module_functions_(*this),
-      module_capabilities_(kCapabilitiesMaxValue + 1, false),
-      grammar_(context) {}
+      module_functions_(),
+      module_capabilities_(0u),
+      grammar_(context),
+      addressing_model_(SpvAddressingModelLogical),
+      memory_model_(SpvMemoryModelSimple),
+      in_function_(false) {}
 
 spv_result_t ValidationState_t::forwardDeclareId(uint32_t id) {
   unresolved_forward_ids_.insert(id);
@@ -239,6 +223,16 @@ string ValidationState_t::getIdName(uint32_t id) const {
   out << id;
   if (operand_names_.find(id) != end(operand_names_)) {
     out << "[" << operand_names_.at(id) << "]";
+  }
+  return out.str();
+}
+
+string ValidationState_t::getIdOrName(uint32_t id) const {
+  std::stringstream out;
+  if (operand_names_.find(id) != end(operand_names_)) {
+    out << operand_names_.at(id);
+  } else {
+    out << id;
   }
   return out.str();
 }
@@ -284,27 +278,31 @@ DiagnosticStream ValidationState_t::diag(spv_result_t error_code) const {
       error_code);
 }
 
-Functions& ValidationState_t::get_functions() { return module_functions_; }
+list<Function>& ValidationState_t::get_functions() { return module_functions_; }
 
-bool ValidationState_t::in_function_body() const {
-  return module_functions_.in_function_body();
+Function& ValidationState_t::get_current_function() {
+  assert(in_function_body());
+  return module_functions_.back();
 }
+
+bool ValidationState_t::in_function_body() const { return in_function_; }
 
 bool ValidationState_t::in_block() const {
-  return module_functions_.in_block();
+  return module_functions_.empty() == false &&
+         module_functions_.back().get_current_block() != nullptr;
 }
 
-void ValidationState_t::registerCapability(SpvCapability cap) {
-  module_capabilities_[cap] = true;
+void ValidationState_t::RegisterCapability(SpvCapability cap) {
+  module_capabilities_ |= SPV_CAPABILITY_AS_MASK(cap);
   spv_operand_desc desc;
   if (SPV_SUCCESS ==
       grammar_.lookupOperand(SPV_OPERAND_TYPE_CAPABILITY, cap, &desc))
     libspirv::ForEach(desc->capabilities,
-                      [this](SpvCapability c) { registerCapability(c); });
+                      [this](SpvCapability c) { RegisterCapability(c); });
 }
 
 bool ValidationState_t::hasCapability(SpvCapability cap) const {
-  return module_capabilities_[cap];
+  return (module_capabilities_ & SPV_CAPABILITY_AS_MASK(cap)) != 0;
 }
 
 bool ValidationState_t::HasAnyOf(spv_capability_mask_t capabilities) const {
@@ -317,83 +315,46 @@ bool ValidationState_t::HasAnyOf(spv_capability_mask_t capabilities) const {
   return found;
 }
 
-Functions::Functions(ValidationState_t& module)
-    : module_(module), in_function_(false), in_block_(false) {}
+void ValidationState_t::setAddressingModel(SpvAddressingModel am) {
+  addressing_model_ = am;
+}
 
-bool Functions::in_function_body() const { return in_function_; }
+SpvAddressingModel ValidationState_t::getAddressingModel() const {
+  return addressing_model_;
+}
 
-bool Functions::in_block() const { return in_block_; }
+void ValidationState_t::setMemoryModel(SpvMemoryModel mm) {
+  memory_model_ = mm;
+}
 
-spv_result_t Functions::RegisterFunction(uint32_t id, uint32_t ret_type_id,
-                                         uint32_t function_control,
-                                         uint32_t function_type_id) {
-  assert(in_function_ == false &&
-         "Function instructions can not be declared in a function");
+SpvMemoryModel ValidationState_t::getMemoryModel() const {
+  return memory_model_;
+}
+
+spv_result_t ValidationState_t::RegisterFunction(
+    uint32_t id, uint32_t ret_type_id, SpvFunctionControlMask function_control,
+    uint32_t function_type_id) {
+  assert(in_function_body() == false &&
+         "RegisterFunction can only be called when parsing the binary outside "
+         "of another function");
   in_function_ = true;
-  id_.emplace_back(id);
-  type_id_.emplace_back(function_type_id);
-  declaration_type_.emplace_back(FunctionDecl::kFunctionDeclUnknown);
-  block_ids_.emplace_back();
-  variable_ids_.emplace_back();
-  parameter_ids_.emplace_back();
+  module_functions_.emplace_back(id, ret_type_id, function_control,
+                                 function_type_id, *this);
 
   // TODO(umar): validate function type and type_id
-  (void)ret_type_id;
-  (void)function_control;
 
   return SPV_SUCCESS;
 }
 
-spv_result_t Functions::RegisterFunctionParameter(uint32_t id,
-                                                  uint32_t type_id) {
-  assert(in_function_ == true &&
-         "Function parameter instructions cannot be declared outside of a "
-         "function");
+spv_result_t ValidationState_t::RegisterFunctionEnd() {
+  assert(in_function_body() == true &&
+         "RegisterFunctionEnd can only be called when parsing the binary "
+         "inside of another function");
   assert(in_block() == false &&
-         "Function parameters cannot be called in blocks");
-  // TODO(umar): Validate function parameter type order and count
-  // TODO(umar): Use these variables to validate parameter type
-  (void)id;
-  (void)type_id;
-  return SPV_SUCCESS;
-}
-
-spv_result_t Functions::RegisterSetFunctionDeclType(FunctionDecl type) {
-  assert(declaration_type_.back() == FunctionDecl::kFunctionDeclUnknown);
-  declaration_type_.back() = type;
-  return SPV_SUCCESS;
-}
-
-spv_result_t Functions::RegisterBlock(uint32_t id) {
-  assert(in_function_ == true && "Blocks can only exsist in functions");
-  assert(in_block_ == false && "Blocks cannot be nested");
-  assert(module_.getLayoutSection() !=
-             ModuleLayoutSection::kLayoutFunctionDeclarations &&
-         "Function declartions must appear before function definitions");
-  assert(declaration_type_.back() == FunctionDecl::kFunctionDeclDefinition &&
-         "Function declaration type should have already been defined");
-
-  block_ids_.back().push_back(id);
-  in_block_ = true;
-  return SPV_SUCCESS;
-}
-
-spv_result_t Functions::RegisterFunctionEnd() {
-  assert(in_function_ == true &&
-         "Function end can only be called in functions");
-  assert(in_block_ == false && "Function end cannot be called inside a block");
+         "RegisterFunctionParameter can only be called when parsing the binary "
+         "ouside of a block");
   in_function_ = false;
   return SPV_SUCCESS;
 }
 
-spv_result_t Functions::RegisterBlockEnd() {
-  assert(in_function_ == true &&
-         "Branch instruction can only be called in a function");
-  assert(in_block_ == true &&
-         "Branch instruction can only be called in a block");
-  in_block_ = false;
-  return SPV_SUCCESS;
-}
-
-size_t Functions::get_block_count() const { return block_ids_.back().size(); }
-}
+}  /// namespace libspirv

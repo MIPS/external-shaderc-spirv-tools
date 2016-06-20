@@ -75,8 +75,6 @@ spv_result_t spvDiagnosticPrint(const spv_diagnostic diagnostic) {
               << diagnostic->error << "\n";
     return SPV_SUCCESS;
   }
-
-  return SPV_ERROR_INVALID_VALUE;
 }
 
 namespace libspirv {
@@ -148,6 +146,10 @@ spvResultToString(spv_result_t res) {
       out = "Unknown Error";
   }
   return out;
+}
+
+void message(std::string file, size_t line, std::string name) {
+  std::cout << file << ":" << line << ": " << name << std::endl;
 }
 
 }  // namespace libspirv

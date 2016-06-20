@@ -24,7 +24,8 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
-#include <assert.h>
+#include <cassert>
+#include <cstring>
 
 #include "spirv-tools/libspirv.h"
 #include "spirv_constant.h"
@@ -35,6 +36,8 @@ const char* spvTargetEnvDescription(spv_target_env env) {
       return "SPIR-V 1.0";
     case SPV_ENV_VULKAN_1_0:
       return "SPIR-V 1.0 (under Vulkan 1.0 semantics)";
+    case SPV_ENV_UNIVERSAL_1_1:
+      return "SPIR-V 1.1";
     default:
       break;
   }
@@ -47,9 +50,27 @@ uint32_t spvVersionForTargetEnv(spv_target_env env) {
     case SPV_ENV_UNIVERSAL_1_0:
     case SPV_ENV_VULKAN_1_0:
       return SPV_SPIRV_VERSION_WORD(1, 0);
+    case SPV_ENV_UNIVERSAL_1_1:
+      return SPV_SPIRV_VERSION_WORD(1, 1);
     default:
       break;
   }
   assert(0 && "Unhandled SPIR-V target environment");
   return SPV_SPIRV_VERSION_WORD(0, 0);
+}
+
+bool spvParseTargetEnv(const char* s, spv_target_env* env) {
+  if (!strncmp(s, "vulkan1.0", strlen("vulkan1.0"))) {
+    if (env) *env = SPV_ENV_VULKAN_1_0;
+    return true;
+  } else if (!strncmp(s, "spv1.0", strlen("spv1.0"))) {
+    if (env) *env = SPV_ENV_UNIVERSAL_1_0;
+    return true;
+  } else if (!strncmp(s, "spv1.1", strlen("spv1.1"))) {
+    if (env) *env = SPV_ENV_UNIVERSAL_1_1;
+    return true;
+  } else {
+    if (env) *env = SPV_ENV_UNIVERSAL_1_0;
+    return false;
+  }
 }

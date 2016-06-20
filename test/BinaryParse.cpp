@@ -31,7 +31,7 @@
 #include "TestFixture.h"
 #include "UnitSPIRV.h"
 #include "gmock/gmock.h"
-#include "spirv/OpenCL.std.h"
+#include "spirv/1.0/OpenCL.std.h"
 
 // Returns true if two spv_parsed_operand_t values are equal.
 // To use this operator, this definition must appear in the same namespace
@@ -48,6 +48,7 @@ namespace {
 using ::spvtest::Concatenate;
 using ::spvtest::MakeInstruction;
 using ::spvtest::MakeVector;
+using ::spvtest::ScopedContext;
 using ::testing::AnyOf;
 using ::testing::Eq;
 using ::testing::InSequence;
@@ -140,7 +141,7 @@ const uint32_t kHeaderForBound1[] = {
 // Returns the expected SPIR-V module header words for the Khronos
 // Assembler generator, and with a given Id bound.
 std::vector<uint32_t> ExpectedHeaderForBound(uint32_t bound) {
-  return {SpvMagicNumber, SpvVersion,
+  return {SpvMagicNumber, 0x10000,
           SPV_GENERATOR_WORD(SPV_GENERATOR_KHRONOS_ASSEMBLER, 0), bound, 0};
 }
 
@@ -218,9 +219,9 @@ class BinaryParseTest : public spvtest::TextToBinaryTestBase<::testing::Test> {
                      });
     }
     EXPECT_EQ(expected_result,
-              spvBinaryParse(context, &client_, flipped_words.data(),
-                             flipped_words.size(), invoke_header,
-                             invoke_instruction, &diagnostic_));
+              spvBinaryParse(ScopedContext().context, &client_,
+                             flipped_words.data(), flipped_words.size(),
+                             invoke_header, invoke_instruction, &diagnostic_));
   }
 
   spv_diagnostic diagnostic_ = nullptr;
@@ -229,12 +230,12 @@ class BinaryParseTest : public spvtest::TextToBinaryTestBase<::testing::Test> {
 
 // Adds an EXPECT_CALL to client_->Header() with appropriate parameters,
 // including bound.  Returns the EXPECT_CALL result.
-#define EXPECT_HEADER(bound)                                                 \
-  EXPECT_CALL(client_,                                                       \
-              Header(AnyOf(SPV_ENDIANNESS_LITTLE, SPV_ENDIANNESS_BIG),       \
-                     SpvMagicNumber, SpvVersion,                             \
-                     SPV_GENERATOR_WORD(SPV_GENERATOR_KHRONOS_ASSEMBLER, 0), \
-                     bound, 0 /*reserved*/))
+#define EXPECT_HEADER(bound)                                                   \
+  EXPECT_CALL(                                                                 \
+      client_,                                                                 \
+      Header(AnyOf(SPV_ENDIANNESS_LITTLE, SPV_ENDIANNESS_BIG), SpvMagicNumber, \
+             0x10000, SPV_GENERATOR_WORD(SPV_GENERATOR_KHRONOS_ASSEMBLER, 0),  \
+             bound, 0 /*reserved*/))
 
 static const bool kSwapEndians[] = {false, true};
 
@@ -267,9 +268,9 @@ TEST_F(BinaryParseTest, NullHeaderCallbackIsIgnored) {
       .Times(0);  // No header callback.
   EXPECT_CALL(client_, Instruction(MakeParsedVoidTypeInstruction(1)))
       .WillOnce(Return(SPV_SUCCESS));
-  EXPECT_EQ(SPV_SUCCESS,
-            spvBinaryParse(context, &client_, words.data(), words.size(),
-                           nullptr, invoke_instruction, &diagnostic_));
+  EXPECT_EQ(SPV_SUCCESS, spvBinaryParse(ScopedContext().context, &client_,
+                                        words.data(), words.size(), nullptr,
+                                        invoke_instruction, &diagnostic_));
   EXPECT_EQ(nullptr, diagnostic_);
 }
 
@@ -278,8 +279,8 @@ TEST_F(BinaryParseTest, NullInstructionCallbackIsIgnored) {
   EXPECT_HEADER((2)).WillOnce(Return(SPV_SUCCESS));
   EXPECT_CALL(client_, Instruction(_)).Times(0);  // No instruction callback.
   EXPECT_EQ(SPV_SUCCESS,
-            spvBinaryParse(context, &client_, words.data(), words.size(),
-                           invoke_header, nullptr, &diagnostic_));
+            spvBinaryParse(ScopedContext().context, &client_, words.data(),
+                           words.size(), invoke_header, nullptr, &diagnostic_));
   EXPECT_EQ(nullptr, diagnostic_);
 }
 
@@ -443,8 +444,8 @@ using BinaryParseWordsAndCountDiagnosticTest = spvtest::TextToBinaryTestBase<
 TEST_P(BinaryParseWordsAndCountDiagnosticTest, WordAndCountCases) {
   EXPECT_EQ(
       SPV_ERROR_INVALID_BINARY,
-      spvBinaryParse(context, nullptr, GetParam().words, GetParam().num_words,
-                     nullptr, nullptr, &diagnostic));
+      spvBinaryParse(ScopedContext().context, nullptr, GetParam().words,
+                     GetParam().num_words, nullptr, nullptr, &diagnostic));
   ASSERT_NE(nullptr, diagnostic);
   EXPECT_THAT(diagnostic->error, Eq(GetParam().expected_diagnostic));
 }
@@ -479,8 +480,8 @@ using BinaryParseWordVectorDiagnosticTest = spvtest::TextToBinaryTestBase<
 
 TEST_P(BinaryParseWordVectorDiagnosticTest, WordVectorCases) {
   const auto& words = GetParam().words;
-  EXPECT_THAT(spvBinaryParse(context, nullptr, words.data(), words.size(),
-                             nullptr, nullptr, &diagnostic),
+  EXPECT_THAT(spvBinaryParse(ScopedContext().context, nullptr, words.data(),
+                             words.size(), nullptr, nullptr, &diagnostic),
               AnyOf(SPV_ERROR_INVALID_BINARY, SPV_ERROR_INVALID_ID));
   ASSERT_NE(nullptr, diagnostic);
   EXPECT_THAT(diagnostic->error, Eq(GetParam().expected_diagnostic));
@@ -662,6 +663,13 @@ INSTANTIATE_TEST_CASE_P(
                       MakeInstruction(SpvOpExtInst, {2, 3, 100, 4, 5})}),
          "OpExtInst set Id 100 does not reference an OpExtInstImport result "
          "Id"},
+        {Concatenate({ExpectedHeaderForBound(101),
+                      MakeInstruction(SpvOpExtInstImport, {100},
+                                      MakeVector("OpenCL.std")),
+                      // OpenCL cos is #14
+                      MakeInstruction(SpvOpExtInst, {2, 3, 100, 14, 5, 999})}),
+         "Invalid instruction OpExtInst starting at word 10: expected no "
+         "more operands after 6 words, but stated word count is 7."},
         // In this case, the OpSwitch selector refers to an invalid ID.
         {Concatenate({ExpectedHeaderForBound(3),
                       MakeInstruction(SpvOpSwitch, {1, 2, 42, 3})}),
@@ -709,8 +717,8 @@ using BinaryParseAssemblyDiagnosticTest = spvtest::TextToBinaryTestBase<
 
 TEST_P(BinaryParseAssemblyDiagnosticTest, AssemblyCases) {
   auto words = CompileSuccessfully(GetParam().assembly);
-  EXPECT_THAT(spvBinaryParse(context, nullptr, words.data(), words.size(),
-                             nullptr, nullptr, &diagnostic),
+  EXPECT_THAT(spvBinaryParse(ScopedContext().context, nullptr, words.data(),
+                             words.size(), nullptr, nullptr, &diagnostic),
               AnyOf(SPV_ERROR_INVALID_BINARY, SPV_ERROR_INVALID_ID));
   ASSERT_NE(nullptr, diagnostic);
   EXPECT_THAT(diagnostic->error, Eq(GetParam().expected_diagnostic));

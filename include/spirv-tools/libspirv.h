@@ -329,12 +329,23 @@ typedef spv_context_t* spv_context;
 
 // Platform API
 
+// Returns the SPIRV-Tools software version as a null-terminated string.
+// The contents of the underlying storage is valid for the remainder of
+// the process.
+const char* spvSoftwareVersionString();
+// Returns a null-terminated string containing the name of the project,
+// the software version string, and commit details.
+// The contents of the underlying storage is valid for the remainder of
+// the process.
+const char* spvSoftwareVersionDetailsString();
+
 // Certain target environments impose additional restrictions on SPIR-V, so it's
 // often necessary to specify which one applies.  SPV_ENV_UNIVERSAL means
 // environment-agnostic SPIR-V.
 typedef enum {
   SPV_ENV_UNIVERSAL_1_0,  // SPIR-V 1.0 latest revision, no other restrictions.
   SPV_ENV_VULKAN_1_0,     // Vulkan 1.0 latest revision.
+  SPV_ENV_UNIVERSAL_1_1,  // SPIR-V 1.1 latest revision, no other restrictions.
 } spv_target_env;
 
 // Returns a string describing the given SPIR-V target environment.
@@ -348,7 +359,8 @@ void spvContextDestroy(spv_context context);
 
 // Encodes the given SPIR-V assembly text to its binary representation. The
 // length parameter specifies the number of bytes for text. Encoded binary will
-// be stored into *binary. Any error will be written into *diagnostic.
+// be stored into *binary. Any error will be written into *diagnostic. The
+// generated binary is independent of the context and may outlive it.
 spv_result_t spvTextToBinary(const spv_const_context context, const char* text,
                              const size_t length, spv_binary* binary,
                              spv_diagnostic* diagnostic);

@@ -31,8 +31,8 @@
 
 #include "TestFixture.h"
 #include "gmock/gmock.h"
-#include "spirv/GLSL.std.450.h"
-#include "spirv/OpenCL.std.h"
+#include "spirv/1.0/GLSL.std.450.h"
+#include "spirv/1.0/OpenCL.std.h"
 
 namespace {
 
@@ -66,6 +66,12 @@ TEST_F(TextToBinaryTest, MultiImport) {
                                %2 = OpExtInstImport "OpenCL.std")";
   EXPECT_THAT(CompileFailure(input),
               Eq("Import Id is being defined a second time"));
+}
+
+TEST_F(TextToBinaryTest, TooManyArguments) {
+  const std::string input = R"(%opencl = OpExtInstImport "OpenCL.std"
+                               %2 = OpExtInst %float %opencl cos %x %oops")";
+  EXPECT_THAT(CompileFailure(input), Eq("Expected '=', found end of stream."));
 }
 
 TEST_F(TextToBinaryTest, ExtInstFromTwoDifferentImports) {

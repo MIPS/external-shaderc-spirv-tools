@@ -1,6 +1,7 @@
 # SPIR-V Tools
 
 [![Build Status](https://travis-ci.org/KhronosGroup/SPIRV-Tools.svg?branch=master)](https://travis-ci.org/KhronosGroup/SPIRV-Tools)
+[![Build status](https://ci.appveyor.com/api/projects/status/p5d60n0mhfimm6i5/branch/master?svg=true)](https://ci.appveyor.com/project/antiagainst/spirv-tools/branch/master)
 
 ## Overview
 
@@ -18,13 +19,32 @@ SPIR-V is defined by the Khronos Group Inc.
 See the [SPIR-V Registry][spirv-registry] for the SPIR-V specification,
 headers, and XML registry.
 
+## Verisoning SPIRV-Tools
+
+See [`CHANGES`](CHANGES) for a high level summary of recent changes, by version.
+
+SPIRV-Tools project version numbers are of the form `v`*year*`.`*index* and with
+an optional `-dev` suffix to indicate work in progress.  For exampe, the
+following versions are ordered from oldest to newest:
+
+* `v2016.0`
+* `v2016.1-dev`
+* `v2016.1`
+* `v2016.2-dev`
+* `v2016.2`
+
+Use the `--version` option on each command line tool to see the software
+version.  An API call reports the software version as a C-style string.
+
 ## Supported features
 
 ### Assembler, binary parser, and disassembler
 
-* Based on SPIR-V 1.0 Revision 3.
-  * Supports GLSL std450 extended instructions.
-  * Supports OpenCL extended instructions.
+* Based on SPIR-V version 1.1 Rev 1
+* Support for extended instruction sets:
+  * GLSL std450 version 1.0 Rev 3
+  * OpenCL version 1.0 Rev 2
+* Support for SPIR-V 1.0 (with or without additional restrictions from Vulkan 1.0)
 * Assembler only does basic syntax checking.  No cross validation of
   IDs or types is performed, except to check literal arguments to
   `OpConstant`, `OpSpecConstant`, and `OpSwitch`.
@@ -54,9 +74,9 @@ We intend to maintain a linear history on the GitHub `master` branch.
 * `external/googletest`: Intended location for the
   [googletest][googletest] sources, not provided
 * `include/`: API clients should add this directory to the include search path
+* `external/spirv-headers`: Intended location for
+  [SPIR-V headers][spirv-headers], not provided
 * `include/spirv-tools/libspirv.h`: C API public interface
-* `include/spirv/` : Contains header files from the SPIR-V Registry, required
-  by the public API.
 * `source/`: API implementation
 * `test/`: Tests, using the [googletest][googletest] framework
 * `tools/`: Command line executables
@@ -82,7 +102,8 @@ In particular, googletest must be newer than version 1.7.0.
 ## Build
 
 The project uses [CMake][cmake] to generate platform-specific build
-configurations.  To generate these build files, issue the following commands:
+configurations. After checking out [SPIR-V headers][spirv-headers] and
+[googletest][googletest] into `external/`. issue the following commands:
 
 ```
 mkdir <spirv-dir>/build
@@ -247,6 +268,7 @@ MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 ```
 
 [spirv-registry]: https://www.khronos.org/registry/spir-v/
+[spirv-headers]: https://github.com/KhronosGroup/SPIRV-Headers
 [googletest]: https://github.com/google/googletest
 [googletest-pull-612]: https://github.com/google/googletest/pull/612
 [googletest-issue-610]: https://github.com/google/googletest/issues/610
