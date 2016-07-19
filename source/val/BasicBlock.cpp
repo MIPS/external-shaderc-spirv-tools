@@ -26,34 +26,48 @@
 
 #include "BasicBlock.h"
 
+#include <utility>
 #include <vector>
 
 using std::vector;
 
 namespace libspirv {
 
-BasicBlock::BasicBlock(uint32_t id)
-    : id_(id),
+BasicBlock::BasicBlock(uint32_t label_id)
+    : id_(label_id),
       immediate_dominator_(nullptr),
+      immediate_post_dominator_(nullptr),
       predecessors_(),
       successors_(),
+      type_(0),
       reachable_(false) {}
 
 void BasicBlock::SetImmediateDominator(BasicBlock* dom_block) {
   immediate_dominator_ = dom_block;
 }
 
-const BasicBlock* BasicBlock::GetImmediateDominator() const {
+void BasicBlock::SetImmediatePostDominator(BasicBlock* pdom_block) {
+  immediate_post_dominator_ = pdom_block;
+}
+
+const BasicBlock* BasicBlock::immediate_dominator() const {
   return immediate_dominator_;
 }
 
-BasicBlock* BasicBlock::GetImmediateDominator() { return immediate_dominator_; }
+const BasicBlock* BasicBlock::immediate_post_dominator() const {
+  return immediate_post_dominator_;
+}
 
-void BasicBlock::RegisterSuccessors(vector<BasicBlock*> next_blocks) {
+BasicBlock* BasicBlock::immediate_dominator() { return immediate_dominator_; }
+BasicBlock* BasicBlock::immediate_post_dominator() {
+  return immediate_post_dominator_;
+}
+
+void BasicBlock::RegisterSuccessors(const vector<BasicBlock*>& next_blocks) {
   for (auto& block : next_blocks) {
     block->predecessors_.push_back(this);
     successors_.push_back(block);
-    if (block->reachable_ == false) block->set_reachability(reachable_);
+    if (block->reachable_ == false) block->set_reachable(reachable_);
   }
 }
 
@@ -62,25 +76,38 @@ void BasicBlock::RegisterBranchInstruction(SpvOp branch_instruction) {
   return;
 }
 
+void BasicBlock::SetSuccessorsUnsafe(std::vector<BasicBlock*>&& others) {
+  successors_ = std::move(others);
+}
+
+void BasicBlock::SetPredecessorsUnsafe(std::vector<BasicBlock*>&& others) {
+  predecessors_ = std::move(others);
+}
+
 BasicBlock::DominatorIterator::DominatorIterator() : current_(nullptr) {}
-BasicBlock::DominatorIterator::DominatorIterator(const BasicBlock* block)
-    : current_(block) {}
+
+BasicBlock::DominatorIterator::DominatorIterator(
+    const BasicBlock* block,
+    std::function<const BasicBlock*(const BasicBlock*)> dominator_func)
+    : current_(block), dom_func_(dominator_func) {}
 
 BasicBlock::DominatorIterator& BasicBlock::DominatorIterator::operator++() {
-  if (current_ == current_->GetImmediateDominator()) {
+  if (current_ == dom_func_(current_)) {
     current_ = nullptr;
   } else {
-    current_ = current_->GetImmediateDominator();
+    current_ = dom_func_(current_);
   }
   return *this;
 }
 
 const BasicBlock::DominatorIterator BasicBlock::dom_begin() const {
-  return DominatorIterator(this);
+  return DominatorIterator(
+      this, [](const BasicBlock* b) { return b->immediate_dominator(); });
 }
 
 BasicBlock::DominatorIterator BasicBlock::dom_begin() {
-  return DominatorIterator(this);
+  return DominatorIterator(
+      this, [](const BasicBlock* b) { return b->immediate_dominator(); });
 }
 
 const BasicBlock::DominatorIterator BasicBlock::dom_end() const {
@@ -88,6 +115,24 @@ const BasicBlock::DominatorIterator BasicBlock::dom_end() const {
 }
 
 BasicBlock::DominatorIterator BasicBlock::dom_end() {
+  return DominatorIterator();
+}
+
+const BasicBlock::DominatorIterator BasicBlock::pdom_begin() const {
+  return DominatorIterator(
+      this, [](const BasicBlock* b) { return b->immediate_post_dominator(); });
+}
+
+BasicBlock::DominatorIterator BasicBlock::pdom_begin() {
+  return DominatorIterator(
+    this, [](const BasicBlock* b) { return b->immediate_post_dominator(); });
+}
+
+const BasicBlock::DominatorIterator BasicBlock::pdom_end() const {
+  return DominatorIterator();
+}
+
+BasicBlock::DominatorIterator BasicBlock::pdom_end() {
   return DominatorIterator();
 }
 

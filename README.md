@@ -1,7 +1,7 @@
 # SPIR-V Tools
 
 [![Build Status](https://travis-ci.org/KhronosGroup/SPIRV-Tools.svg?branch=master)](https://travis-ci.org/KhronosGroup/SPIRV-Tools)
-[![Build status](https://ci.appveyor.com/api/projects/status/p5d60n0mhfimm6i5/branch/master?svg=true)](https://ci.appveyor.com/project/antiagainst/spirv-tools/branch/master)
+[![Build status](https://ci.appveyor.com/api/projects/status/gpue87cesrx3pi0d/branch/master?svg=true)](https://ci.appveyor.com/project/Khronoswebmaster/spirv-tools/branch/master)
 
 ## Overview
 
@@ -40,7 +40,7 @@ version.  An API call reports the software version as a C-style string.
 
 ### Assembler, binary parser, and disassembler
 
-* Based on SPIR-V version 1.1 Rev 1
+* Based on SPIR-V version 1.1 Rev 2
 * Support for extended instruction sets:
   * GLSL std450 version 1.0 Rev 3
   * OpenCL version 1.0 Rev 2
@@ -102,12 +102,15 @@ In particular, googletest must be newer than version 1.7.0.
 ## Build
 
 The project uses [CMake][cmake] to generate platform-specific build
-configurations. After checking out [SPIR-V headers][spirv-headers] and
-[googletest][googletest] into `external/`. issue the following commands:
+configurations. Assume that `<spirv-dir>` is the root directory of the checked
+out code:
 
 ```
-mkdir <spirv-dir>/build
-cd <spirv-dir>/build
+cd <spirv-dir>
+git clone https://github.com/KhronosGroup/SPIRV-Headers.git external/spirv-headers
+git clone https://github.com/google/googletest.git external/googletest # optional
+
+mkdir build && cd build
 cmake [-G <platform-generator>] <spirv-dir>
 ```
 
@@ -197,6 +200,16 @@ Use option `-h` to print help.
 
 The output includes syntax colouring when printing to the standard output stream,
 on Linux, Windows, and OS X.
+
+### Optimizer tool
+
+The optimizer processes a SPIR-V binary module, applying transformations
+in the specified order.
+
+This is a work in progress, with initially only few available transformations.
+
+* `spirv-opt` - the standalone optimizer
+  * `<spirv-dir>/spirv-opt`
 
 ### Validator tool
 

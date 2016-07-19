@@ -28,12 +28,12 @@
 #define LIBSPIRV_VAL_FUNCTION_H_
 
 #include <list>
-#include <vector>
-#include <unordered_set>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
-#include "spirv/1.1/spirv.h"
 #include "spirv-tools/libspirv.h"
+#include "spirv/1.1/spirv.h"
 #include "val/BasicBlock.h"
 
 namespace libspirv {
@@ -95,58 +95,94 @@ class Function {
 
   /// Registers the end of the block
   ///
-  /// @param[in] successors_list A list of ids to the blocks successors
+  /// @param[in] successors_list A list of ids to the block's successors
   /// @param[in] branch_instruction the branch instruction that ended the block
   void RegisterBlockEnd(std::vector<uint32_t> successors_list,
                         SpvOp branch_instruction);
 
-  /// Returns true if the \p merge_block_id is a merge block
-  bool IsMergeBlock(uint32_t merge_block_id) const;
+  /// Registers the end of the function.  This is idempotent.
+  void RegisterFunctionEnd();
 
-  /// Returns true if the \p id is the first block of this function
+  /// Returns true if the \p id block is the first block of this function
   bool IsFirstBlock(uint32_t id) const;
 
-  /// Returns the first block of the current function
-  const BasicBlock* get_first_block() const;
+  /// Returns true if the \p merge_block_id is a BlockType of \p type
+  bool IsBlockType(uint32_t merge_block_id, BlockType type) const;
+
+  /// Returns a pair consisting of the BasicBlock with \p id and a bool
+  /// which is true if the block has been defined, and false if it is
+  /// declared but not defined. This function will return nullptr if the
+  /// \p id was not declared and not defined at the current point in the binary
+  std::pair<const BasicBlock*, bool> GetBlock(uint32_t id) const;
+  std::pair<BasicBlock*, bool> GetBlock(uint32_t id);
 
   /// Returns the first block of the current function
-  BasicBlock* get_first_block();
+  const BasicBlock* first_block() const;
+
+  /// Returns the first block of the current function
+  BasicBlock* first_block();
 
   /// Returns a vector of all the blocks in the function
-  const std::vector<BasicBlock*>& get_blocks() const;
+  const std::vector<BasicBlock*>& ordered_blocks() const;
 
   /// Returns a vector of all the blocks in the function
-  std::vector<BasicBlock*>& get_blocks();
+  std::vector<BasicBlock*>& ordered_blocks();
 
   /// Returns a list of all the cfg constructs in the function
-  const std::list<Construct>& get_constructs() const;
+  const std::list<Construct>& constructs() const;
 
   /// Returns a list of all the cfg constructs in the function
-  std::list<Construct>& get_constructs();
+  std::list<Construct>& constructs();
 
   /// Returns the number of blocks in the current function being parsed
-  size_t get_block_count() const;
+  size_t block_count() const;
 
   /// Returns the id of the funciton
-  uint32_t get_id() const { return id_; }
+  uint32_t id() const { return id_; }
 
   /// Returns the number of blocks in the current function being parsed
-  size_t get_undefined_block_count() const;
-  const std::unordered_set<uint32_t>& get_undefined_blocks() const {
+  size_t undefined_block_count() const;
+  const std::unordered_set<uint32_t>& undefined_blocks() const {
     return undefined_blocks_;
   }
 
   /// Returns the block that is currently being parsed in the binary
-  BasicBlock* get_current_block();
+  BasicBlock* current_block();
 
   /// Returns the block that is currently being parsed in the binary
-  const BasicBlock* get_current_block() const;
+  const BasicBlock* current_block() const;
+
+  /// Returns the pseudo exit block
+  BasicBlock* pseudo_entry_block();
+
+  /// Returns the pseudo exit block
+  const BasicBlock* pseudo_entry_block() const;
+
+  /// Returns the pseudo exit block
+  BasicBlock* pseudo_exit_block();
+
+  /// Returns the pseudo exit block
+  const BasicBlock* pseudo_exit_block() const;
+
+  /// Returns a vector with just the pseudo entry block.
+  /// This serves as the predecessors of each source node in the CFG when
+  /// computing dominators.
+  const std::vector<BasicBlock*>* pseudo_entry_blocks() const {
+    return &pseudo_entry_blocks_;
+  }
+
+  /// Returns a vector with just the pseudo exit block.
+  /// This serves as the successors of each sink node in the CFG when computing
+  /// dominators.
+  const std::vector<BasicBlock*>* pseudo_exit_blocks() const {
+    return &pseudo_exit_blocks_;
+  }
 
   /// Prints a GraphViz digraph of the CFG of the current funciton
-  void printDotGraph() const;
+  void PrintDotGraph() const;
 
   /// Prints a directed graph of the CFG of the current funciton
-  void printBlocks() const;
+  void PrintBlocks() const;
 
  private:
   /// Parent module
@@ -167,6 +203,9 @@ class Function {
   /// The type of declaration of each function
   FunctionDecl declaration_type_;
 
+  // Have we finished parsing this function?
+  bool end_has_been_registered_;
+
   /// The blocks in the function mapped by block ID
   std::unordered_map<uint32_t, BasicBlock> blocks_;
 
@@ -179,6 +218,29 @@ class Function {
   /// The block that is currently being parsed
   BasicBlock* current_block_;
 
+  /// A pseudo entry block that, for the purposes of dominance analysis,
+  /// is considered the predecessor to any ordinary block without predecessors.
+  /// After the function end has been registered, its successor list consists
+  /// of all ordinary blocks without predecessors.  It has no predecessors.
+  /// It does not appear in the predecessor or successor list of any
+  /// ordinary block.
+  /// It has Id 0.
+  BasicBlock pseudo_entry_block_;
+
+  /// A pseudo exit block that, for the purposes of dominance analysis,
+  /// is considered the successor to any ordinary block without successors.
+  /// After the function end has been registered, its predecessor list consists
+  /// of all ordinary blocks without successors.  It has no successors.
+  /// It does not appear in the predecessor or successor list of any
+  /// ordinary block.
+  BasicBlock pseudo_exit_block_;
+
+  // A vector containing pseudo_entry_block_.
+  const std::vector<BasicBlock*> pseudo_entry_blocks_;
+
+  // A vector containing pseudo_exit_block_.
+  const std::vector<BasicBlock*> pseudo_exit_blocks_;
+
   /// The constructs that are available in this function
   std::list<Construct> cfg_constructs_;
 
@@ -190,6 +252,5 @@ class Function {
 };
 
 }  /// namespace libspirv
-
 
 #endif  /// LIBSPIRV_VAL_FUNCTION_H_

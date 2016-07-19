@@ -28,8 +28,9 @@
 #include <cstring>
 #include <vector>
 
+#include "source/spirv_target_env.h"
 #include "spirv-tools/libspirv.h"
-#include "spirv_target_env.h"
+#include "tools/io.h"
 
 void print_usage(char* argv0) {
   printf(
@@ -127,16 +128,7 @@ int main(int argc, char** argv) {
   }
 
   std::vector<char> contents;
-  const bool use_file = inFile && strcmp("-", inFile);
-  if (FILE* fp = (use_file ? fopen(inFile, "r") : stdin)) {
-    char buf[1024];
-    while (size_t len = fread(buf, 1, sizeof(buf), fp))
-      contents.insert(contents.end(), buf, buf + len);
-    if (use_file) fclose(fp);
-  } else {
-    fprintf(stderr, "error: file does not exist '%s'\n", inFile);
-    return 1;
-  }
+  if (!ReadFile<char>(inFile, "r", &contents)) return 1;
 
   spv_binary binary;
   spv_diagnostic diagnostic = nullptr;
@@ -150,17 +142,8 @@ int main(int argc, char** argv) {
     return error;
   }
 
-  const bool use_stdout = outFile[0] == '-' && outFile[1] == 0;
-  if (FILE* fp = (use_stdout ? stdout : fopen(outFile, "wb"))) {
-    size_t written =
-        fwrite(binary->code, sizeof(uint32_t), (size_t)binary->wordCount, fp);
-    if (binary->wordCount != written) {
-      fprintf(stderr, "error: could not write to file '%s'\n", outFile);
-      return 1;
-    }
-    if (!use_stdout) fclose(fp);
-  } else {
-    fprintf(stderr, "error: could not open file '%s'\n", outFile);
+  if (!WriteFile<uint32_t>(outFile, "wb", binary->code, binary->wordCount)) {
+    spvBinaryDestroy(binary);
     return 1;
   }
 

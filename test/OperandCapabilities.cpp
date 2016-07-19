@@ -171,7 +171,6 @@ INSTANTIATE_TEST_CASE_P(
     Combine(Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1),
             ValuesIn(std::vector<EnumCapabilityCase>{
                 CASE0(STORAGE_CLASS, StorageClassUniformConstant),
-                CASE1(STORAGE_CLASS, StorageClassInput, Shader),
                 CASE1(STORAGE_CLASS, StorageClassUniform, Shader),
                 CASE1(STORAGE_CLASS, StorageClassOutput, Shader),
                 CASE0(STORAGE_CLASS, StorageClassWorkgroup),
@@ -546,6 +545,14 @@ INSTANTIATE_TEST_CASE_P(
                 CASE0(LOOP_CONTROL, LoopControlDontUnrollMask),
             })), );
 
+INSTANTIATE_TEST_CASE_P(
+    LoopControlV11, EnumCapabilityTest,
+    Combine(Values(SPV_ENV_UNIVERSAL_1_1),
+            ValuesIn(std::vector<EnumCapabilityCase>{
+                CASE0(LOOP_CONTROL, LoopControlDependencyInfiniteMask),
+                CASE0(LOOP_CONTROL, LoopControlDependencyLengthMask),
+            })), );
+
 // See SPIR-V Section 3.24 Function Control
 INSTANTIATE_TEST_CASE_P(
     FunctionControl, EnumCapabilityTest,
@@ -682,10 +689,8 @@ INSTANTIATE_TEST_CASE_P(
             CASE1(CAPABILITY, CapabilityInputAttachment, Shader),
             CASE1(CAPABILITY, CapabilitySparseResidency, Shader),
             CASE1(CAPABILITY, CapabilityMinLod, Shader),
-            CASE1(CAPABILITY, CapabilitySampled1D, Shader),
             CASE1(CAPABILITY, CapabilityImage1D, Sampled1D),
             CASE1(CAPABILITY, CapabilitySampledCubeArray, Shader),
-            CASE1(CAPABILITY, CapabilitySampledBuffer, Shader),
             CASE1(CAPABILITY, CapabilityImageBuffer, SampledBuffer),
             CASE1(CAPABILITY, CapabilityImageMSArray, Shader),
             CASE1(CAPABILITY, CapabilityStorageImageExtendedFormats, Shader),

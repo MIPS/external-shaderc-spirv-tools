@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "spirv-tools/libspirv.h"
+#include "tools/io.h"
 
 static void print_usage(char* argv0) {
   printf(
@@ -54,6 +55,10 @@ Options:
 
   --no-indent     Don't indent instructions.
 
+  --no-header     Don't output the header as leading comments.
+
+  --raw-id        Show raw Id values instead of friendly names.
+
   --offsets       Show byte offsets for each instruction.
 )",
       argv0, argv0);
@@ -69,6 +74,8 @@ int main(int argc, char** argv) {
 #endif
   bool allow_indent = true;
   bool show_byte_offsets = false;
+  bool no_header = false;
+  bool friendly_names = true;
 
   for (int argi = 1; argi < argc; ++argi) {
     if ('-' == argv[argi][0]) {
@@ -92,6 +99,10 @@ int main(int argc, char** argv) {
             allow_indent = false;
           } else if (0 == strcmp(argv[argi], "--offsets")) {
             show_byte_offsets = true;
+          } else if (0 == strcmp(argv[argi], "--no-header")) {
+            no_header = true;
+          } else if (0 == strcmp(argv[argi], "--raw-id")) {
+            friendly_names = false;
           } else if (0 == strcmp(argv[argi], "--help")) {
             print_usage(argv[0]);
             return 0;
@@ -134,6 +145,10 @@ int main(int argc, char** argv) {
 
   if (show_byte_offsets) options |= SPV_BINARY_TO_TEXT_OPTION_SHOW_BYTE_OFFSET;
 
+  if (no_header) options |= SPV_BINARY_TO_TEXT_OPTION_NO_HEADER;
+
+  if (friendly_names) options |= SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES;
+
   if (!outFile || (0 == strcmp("-", outFile))) {
     // Print to standard output.
     options |= SPV_BINARY_TO_TEXT_OPTION_PRINT;
@@ -144,24 +159,7 @@ int main(int argc, char** argv) {
 
   // Read the input binary.
   std::vector<uint32_t> contents;
-  {
-    FILE* input = stdin;
-    const bool use_file = inFile && strcmp("-", inFile);
-    if (use_file) {
-      input = fopen(inFile, "rb");
-      if (!input) {
-        auto msg =
-            std::string("error: Can't open file ") + inFile + " for reading";
-        perror(msg.c_str());
-        return 1;
-      }
-    }
-    uint32_t buf[1024];
-    while (size_t len = fread(buf, sizeof(uint32_t), 1024, input)) {
-      contents.insert(contents.end(), buf, buf + len);
-    }
-    if (use_file) fclose(input);
-  }
+  if (!ReadFile<uint32_t>(inFile, "rb", &contents)) return 1;
 
   // If printing to standard output, then spvBinaryToText should
   // do the printing.  In particular, colour printing on Windows is
@@ -171,7 +169,7 @@ int main(int argc, char** argv) {
   // If the printing option is off, then save the text in memory, so
   // it can be emitted later in this function.
   const bool print_to_stdout = SPV_BINARY_TO_TEXT_OPTION_PRINT & options;
-  spv_text text;
+  spv_text text = nullptr;
   spv_text* textOrNull = print_to_stdout ? nullptr : &text;
   spv_diagnostic diagnostic = nullptr;
   spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_1);
@@ -185,22 +183,13 @@ int main(int argc, char** argv) {
     return error;
   }
 
-  // Output the result.
   if (!print_to_stdout) {
-    if (FILE* fp = fopen(outFile, "w")) {
-      size_t written =
-          fwrite(text->str, sizeof(char), (size_t)text->length, fp);
-      if (text->length != written) {
-        spvTextDestroy(text);
-        fprintf(stderr, "error: Could not write to file '%s'\n", outFile);
-        return 1;
-      }
-    } else {
+    if (!WriteFile<char>(outFile, "w", text->str, text->length)) {
       spvTextDestroy(text);
-      fprintf(stderr, "error: Could not open file '%s'\n", outFile);
       return 1;
     }
   }
+  spvTextDestroy(text);
 
   return 0;
 }
