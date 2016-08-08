@@ -91,8 +91,13 @@ class Block {
       : label_(label), body_(), type_(type), successors_() {}
 
   /// Sets the instructions which will appear in the body of the block
-  Block& setBody(std::string body) {
-    body_ = body;
+  Block& SetBody(std::string body) {
+      body_ = body;
+    return *this;
+  }
+
+  Block& AppendBody(std::string body) {
+      body_ += body;
     return *this;
   }
 
@@ -189,6 +194,87 @@ INSTANTIATE_TEST_CASE_P(StructuredControlFlow, ValidateCFG,
                         ::testing::Values(SpvCapabilityShader,
                                           SpvCapabilityKernel));
 
+TEST_P(ValidateCFG, LoopReachableFromEntryButNeverLeadingToReturn) {
+  // In this case, the loop is reachable from a node without a predecessor,
+  // but never reaches a node with a return.
+  //
+  // This motivates the need for the pseudo-exit node to have a node
+  // from a cycle in its predecessors list.  Otherwise the validator's
+  // post-dominance calculation will go into an infinite loop.
+  //
+  // For more motivation, see
+  // https://github.com/KhronosGroup/SPIRV-Tools/issues/279
+  string str = R"(
+           OpCapability Shader
+           OpMemoryModel Logical GLSL450
+
+           OpName %entry "entry"
+           OpName %loop "loop"
+           OpName %exit "exit"
+
+%voidt   = OpTypeVoid
+%funct   = OpTypeFunction %voidt
+
+%main    = OpFunction %voidt None %funct
+%entry   = OpLabel
+           OpBranch %loop
+%loop    = OpLabel
+           OpLoopMerge %exit %loop None
+           OpBranch %loop
+%exit    = OpLabel
+           OpReturn
+           OpFunctionEnd
+  )";
+  CompileSuccessfully(str);
+  ASSERT_EQ(SPV_SUCCESS, ValidateInstructions()) << str;
+}
+
+TEST_P(ValidateCFG, LoopUnreachableFromEntryButLeadingToReturn) {
+  // In this case, the loop is not reachable from a node without a
+  // predecessor, but eventually reaches a node with a return.
+  //
+  // This motivates the need for the pseudo-entry node to have a node
+  // from a cycle in its successors list.  Otherwise the validator's
+  // dominance calculation will go into an infinite loop.
+  //
+  // For more motivation, see
+  // https://github.com/KhronosGroup/SPIRV-Tools/issues/279
+  // Before that fix, we'd have an infinite loop when calculating
+  // post-dominators.
+  string str = R"(
+           OpCapability Shader
+           OpMemoryModel Logical GLSL450
+
+           OpName %entry "entry"
+           OpName %loop "loop"
+           OpName %cont "cont"
+           OpName %exit "exit"
+
+%voidt   = OpTypeVoid
+%funct   = OpTypeFunction %voidt
+%boolt   = OpTypeBool
+%false   = OpConstantFalse %boolt
+
+%main    = OpFunction %voidt None %funct
+%entry   = OpLabel
+           OpReturn
+
+%loop    = OpLabel
+           OpLoopMerge %exit %cont None
+           OpBranch %cont
+
+%cont    = OpLabel
+           OpBranchConditional %false %loop %exit
+
+%exit    = OpLabel
+           OpReturn
+           OpFunctionEnd
+  )";
+  CompileSuccessfully(str);
+  ASSERT_EQ(SPV_SUCCESS, ValidateInstructions()) << str
+                                                 << getDiagnosticString();
+}
+
 TEST_P(ValidateCFG, Simple) {
   bool is_shader = GetParam() == SpvCapabilityShader;
   Block entry("entry");
@@ -196,9 +282,9 @@ TEST_P(ValidateCFG, Simple) {
   Block cont("cont");
   Block merge("merge", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
   if (is_shader) {
-    loop.setBody("OpLoopMerge %merge %cont None\n");
+    loop.SetBody("OpLoopMerge %merge %cont None\n");
   }
 
   string str = header(GetParam()) + nameOps("loop", "entry", "cont", "merge",
@@ -220,7 +306,7 @@ TEST_P(ValidateCFG, Variable) {
   Block cont("cont");
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%var = OpVariable %ptrt Function\n");
+  entry.SetBody("%var = OpVariable %ptrt Function\n");
 
   string str = header(GetParam()) + nameOps(make_pair("func", "Main")) +
                types_consts() + " %func    = OpFunction %voidt None %funct\n";
@@ -239,7 +325,7 @@ TEST_P(ValidateCFG, VariableNotInFirstBlockBad) {
   Block exit("exit", SpvOpReturn);
 
   // This operation should only be performed in the entry block
-  cont.setBody("%var = OpVariable %ptrt Function\n");
+  cont.SetBody("%var = OpVariable %ptrt Function\n");
 
   string str = header(GetParam()) + nameOps(make_pair("func", "Main")) +
                types_consts() + " %func    = OpFunction %voidt None %funct\n";
@@ -257,6 +343,29 @@ TEST_P(ValidateCFG, VariableNotInFirstBlockBad) {
           "Variables can only be defined in the first block of a function"));
 }
 
+TEST_P(ValidateCFG, BlockSelfLoopIsOk) {
+  bool is_shader = GetParam() == SpvCapabilityShader;
+  Block entry("entry");
+  Block loop("loop", SpvOpBranchConditional);
+  Block merge("merge", SpvOpReturn);
+
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) loop.SetBody("OpLoopMerge %merge %loop None\n");
+
+  string str = header(GetParam()) +
+               nameOps("loop", "merge", make_pair("func", "Main")) +
+               types_consts() + "%func    = OpFunction %voidt None %funct\n";
+
+  str += entry >> loop;
+  // loop branches to itself, but does not trigger an error.
+  str += loop >> vector<Block>({merge, loop});
+  str += merge;
+  str += "OpFunctionEnd\n";
+
+  CompileSuccessfully(str);
+  ASSERT_EQ(SPV_SUCCESS, ValidateInstructions()) << getDiagnosticString();
+}
+
 TEST_P(ValidateCFG, BlockAppearsBeforeDominatorBad) {
   bool is_shader = GetParam() == SpvCapabilityShader;
   Block entry("entry");
@@ -264,8 +373,8 @@ TEST_P(ValidateCFG, BlockAppearsBeforeDominatorBad) {
   Block branch("branch", SpvOpBranchConditional);
   Block merge("merge", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) branch.setBody("OpSelectionMerge %merge None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) branch.SetBody("OpSelectionMerge %merge None\n");
 
   string str = header(GetParam()) +
                nameOps("cont", "branch", make_pair("func", "Main")) +
@@ -291,11 +400,11 @@ TEST_P(ValidateCFG, MergeBlockTargetedByMultipleHeaderBlocksBad) {
   Block selection("selection", SpvOpBranchConditional);
   Block merge("merge", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) loop.setBody(" OpLoopMerge %merge %loop None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) loop.SetBody(" OpLoopMerge %merge %loop None\n");
 
   // cannot share the same merge
-  if (is_shader) selection.setBody("OpSelectionMerge %merge None\n");
+  if (is_shader) selection.SetBody("OpSelectionMerge %merge None\n");
 
   string str = header(GetParam()) +
                nameOps("merge", make_pair("func", "Main")) + types_consts() +
@@ -325,11 +434,11 @@ TEST_P(ValidateCFG, MergeBlockTargetedByMultipleHeaderBlocksSelectionBad) {
   Block selection("selection", SpvOpBranchConditional);
   Block merge("merge", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) selection.setBody(" OpSelectionMerge %merge None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) selection.SetBody(" OpSelectionMerge %merge None\n");
 
   // cannot share the same merge
-  if (is_shader) loop.setBody(" OpLoopMerge %merge %loop None\n");
+  if (is_shader) loop.SetBody(" OpLoopMerge %merge %loop None\n");
 
   string str = header(GetParam()) +
                nameOps("merge", make_pair("func", "Main")) + types_consts() +
@@ -377,8 +486,8 @@ TEST_P(ValidateCFG, BranchConditionalTrueTargetFirstBlockBad) {
   Block bad("bad", SpvOpBranchConditional);
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  bad.setBody(" OpLoopMerge %entry %exit None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  bad.SetBody(" OpLoopMerge %entry %exit None\n");
 
   string str = header(GetParam()) +
                nameOps("entry", "bad", make_pair("func", "Main")) +
@@ -403,8 +512,8 @@ TEST_P(ValidateCFG, BranchConditionalFalseTargetFirstBlockBad) {
   Block merge("merge");
   Block end("end", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  bad.setBody("OpLoopMerge %merge %cont None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  bad.SetBody("OpLoopMerge %merge %cont None\n");
 
   string str = header(GetParam()) +
                nameOps("entry", "bad", make_pair("func", "Main")) +
@@ -433,8 +542,8 @@ TEST_P(ValidateCFG, SwitchTargetFirstBlockBad) {
   Block merge("merge");
   Block end("end", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  bad.setBody("OpSelectionMerge %merge None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  bad.SetBody("OpSelectionMerge %merge None\n");
 
   string str = header(GetParam()) +
                nameOps("entry", "bad", make_pair("func", "Main")) +
@@ -462,8 +571,8 @@ TEST_P(ValidateCFG, BranchToBlockInOtherFunctionBad) {
   Block middle("middle", SpvOpBranchConditional);
   Block end("end", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  middle.setBody("OpSelectionMerge %end None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  middle.SetBody("OpSelectionMerge %end None\n");
 
   Block entry2("entry2");
   Block middle2("middle2");
@@ -499,9 +608,9 @@ TEST_P(ValidateCFG, HeaderDoesntDominatesMergeBad) {
   Block f("f");
   Block merge("merge", SpvOpReturn);
 
-  entry.setBody("%cond = OpSLessThan %intt %one %two\n");
+  head.SetBody("%cond = OpSLessThan %intt %one %two\n");
 
-  if (is_shader) head.setBody("OpSelectionMerge %merge None\n");
+  if (is_shader) head.AppendBody("OpSelectionMerge %merge None\n");
 
   string str = header(GetParam()) +
                nameOps("head", "merge", make_pair("func", "Main")) +
@@ -514,7 +623,6 @@ TEST_P(ValidateCFG, HeaderDoesntDominatesMergeBad) {
   str += "OpFunctionEnd\n";
 
   CompileSuccessfully(str);
-
   if (is_shader) {
     ASSERT_EQ(SPV_ERROR_INVALID_CFG, ValidateInstructions());
     EXPECT_THAT(
@@ -535,8 +643,8 @@ TEST_P(ValidateCFG, UnreachableMerge) {
   Block f("f", SpvOpReturn);
   Block merge("merge", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) branch.setBody("OpSelectionMerge %merge None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) branch.AppendBody("OpSelectionMerge %merge None\n");
 
   string str = header(GetParam()) +
                nameOps("branch", "merge", make_pair("func", "Main")) +
@@ -561,8 +669,8 @@ TEST_P(ValidateCFG, UnreachableMergeDefinedByOpUnreachable) {
   Block f("f", SpvOpReturn);
   Block merge("merge", SpvOpUnreachable);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) branch.setBody("OpSelectionMerge %merge None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) branch.AppendBody("OpSelectionMerge %merge None\n");
 
   string str = header(GetParam()) +
                nameOps("branch", "merge", make_pair("func", "Main")) +
@@ -606,8 +714,8 @@ TEST_P(ValidateCFG, UnreachableBranch) {
   Block merge("merge");
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) unreachable.setBody("OpSelectionMerge %merge None\n");
+  unreachable.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) unreachable.AppendBody("OpSelectionMerge %merge None\n");
   string str = header(GetParam()) +
                nameOps("unreachable", "exit", make_pair("func", "Main")) +
                types_consts() + "%func    = OpFunction %voidt None %funct\n";
@@ -638,8 +746,8 @@ TEST_P(ValidateCFG, SingleBlockLoop) {
   Block loop("loop", SpvOpBranchConditional);
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) loop.setBody("OpLoopMerge %exit %loop None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) loop.AppendBody("OpLoopMerge %exit %loop None\n");
 
   string str = header(GetParam()) + string(types_consts()) +
                "%func    = OpFunction %voidt None %funct\n";
@@ -664,10 +772,10 @@ TEST_P(ValidateCFG, NestedLoops) {
   Block loop1_merge("loop1_merge");
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
   if (is_shader) {
-    loop1.setBody("OpLoopMerge %loop1_merge %loop2 None\n");
-    loop2.setBody("OpLoopMerge %loop2_merge %loop2 None\n");
+    loop1.SetBody("OpLoopMerge %loop1_merge %loop2 None\n");
+    loop2.SetBody("OpLoopMerge %loop2_merge %loop2 None\n");
   }
 
   string str = header(GetParam()) + nameOps("loop2", "loop2_merge") +
@@ -694,11 +802,11 @@ TEST_P(ValidateCFG, NestedSelection) {
   vector<Block> merge_blocks;
   Block inner("inner");
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
 
   if_blocks.emplace_back("if0", SpvOpBranchConditional);
 
-  if (is_shader) if_blocks[0].setBody("OpSelectionMerge %if_merge0 None\n");
+  if (is_shader) if_blocks[0].SetBody("OpSelectionMerge %if_merge0 None\n");
   merge_blocks.emplace_back("if_merge0", SpvOpReturn);
 
   for (int i = 1; i < N; i++) {
@@ -706,7 +814,7 @@ TEST_P(ValidateCFG, NestedSelection) {
     ss << i;
     if_blocks.emplace_back("if" + ss.str(), SpvOpBranchConditional);
     if (is_shader)
-      if_blocks[i].setBody("OpSelectionMerge %if_merge" + ss.str() + " None\n");
+      if_blocks[i].SetBody("OpSelectionMerge %if_merge" + ss.str() + " None\n");
     merge_blocks.emplace_back("if_merge" + ss.str(), SpvOpBranch);
   }
   string str = header(GetParam()) + string(types_consts()) +
@@ -737,10 +845,10 @@ TEST_P(ValidateCFG, BackEdgeBlockDoesntPostDominateContinueTargetBad) {
   Block be_block("be_block");
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
   if (is_shader) {
-    loop1.setBody("OpLoopMerge %exit %loop2_merge None\n");
-    loop2.setBody("OpLoopMerge %loop2_merge %loop2 None\n");
+    loop1.SetBody("OpLoopMerge %exit %loop2_merge None\n");
+    loop2.SetBody("OpLoopMerge %loop2_merge %loop2 None\n");
   }
 
   string str = header(GetParam()) +
@@ -775,8 +883,8 @@ TEST_P(ValidateCFG, BranchingToNonLoopHeaderBlockBad) {
   Block f("f");
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) split.setBody("OpSelectionMerge %exit None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) split.SetBody("OpSelectionMerge %exit None\n");
 
   string str = header(GetParam()) + nameOps("split", "f") + types_consts() +
                "%func    = OpFunction %voidt None %funct\n";
@@ -806,8 +914,8 @@ TEST_P(ValidateCFG, BranchingToSameNonLoopHeaderBlockBad) {
   Block split("split", SpvOpBranchConditional);
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) split.setBody("OpSelectionMerge %exit None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) split.SetBody("OpSelectionMerge %exit None\n");
 
   string str = header(GetParam()) + nameOps("split") + types_consts() +
                "%func    = OpFunction %voidt None %funct\n";
@@ -829,22 +937,24 @@ TEST_P(ValidateCFG, BranchingToSameNonLoopHeaderBlockBad) {
   }
 }
 
-TEST_P(ValidateCFG, MultipleBackEdgesToLoopHeaderBad) {
+TEST_P(ValidateCFG, MultipleBackEdgeBlocksToLoopHeaderBad) {
   bool is_shader = GetParam() == SpvCapabilityShader;
   Block entry("entry");
   Block loop("loop", SpvOpBranchConditional);
-  Block cont("cont", SpvOpBranchConditional);
+  Block back0("back0");
+  Block back1("back1");
   Block merge("merge", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) loop.setBody("OpLoopMerge %merge %loop None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) loop.SetBody("OpLoopMerge %merge %back0 None\n");
 
-  string str = header(GetParam()) + nameOps("cont", "loop") + types_consts() +
-               "%func    = OpFunction %voidt None %funct\n";
+  string str = header(GetParam()) + nameOps("loop", "back0", "back1") +
+               types_consts() + "%func    = OpFunction %voidt None %funct\n";
 
   str += entry >> loop;
-  str += loop >> vector<Block>({cont, merge});
-  str += cont >> vector<Block>({loop, loop});
+  str += loop >> vector<Block>({back0, back1});
+  str += back0 >> loop;
+  str += back1 >> loop;
   str += merge;
   str += "OpFunctionEnd";
 
@@ -853,7 +963,9 @@ TEST_P(ValidateCFG, MultipleBackEdgesToLoopHeaderBad) {
     ASSERT_EQ(SPV_ERROR_INVALID_CFG, ValidateInstructions());
     EXPECT_THAT(getDiagnosticString(),
                 MatchesRegex(
-                    "Loop header .\\[loop\\] targeted by multiple back-edges"));
+                    "Loop header .\\[loop\\] is targeted by 2 back-edge blocks "
+                    "but the standard requires exactly one"))
+        << str;
   } else {
     ASSERT_EQ(SPV_SUCCESS, ValidateInstructions());
   }
@@ -868,8 +980,8 @@ TEST_P(ValidateCFG, ContinueTargetMustBePostDominatedByBackEdge) {
   Block merge("merge", SpvOpReturn);
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) loop.setBody("OpLoopMerge %merge %cheader None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) loop.SetBody("OpLoopMerge %merge %cheader None\n");
 
   string str = header(GetParam()) + nameOps("cheader", "be_block") +
                types_consts() + "%func    = OpFunction %voidt None %funct\n";
@@ -901,8 +1013,8 @@ TEST_P(ValidateCFG, BranchOutOfConstructToMergeBad) {
   Block cont("cont", SpvOpBranchConditional);
   Block merge("merge", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) loop.setBody("OpLoopMerge %merge %loop None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) loop.SetBody("OpLoopMerge %merge %loop None\n");
 
   string str = header(GetParam()) + nameOps("cont", "loop") + types_consts() +
                "%func    = OpFunction %voidt None %funct\n";
@@ -919,7 +1031,7 @@ TEST_P(ValidateCFG, BranchOutOfConstructToMergeBad) {
     EXPECT_THAT(getDiagnosticString(),
                 MatchesRegex("The continue construct with the continue target "
                              ".\\[loop\\] is not post dominated by the "
-                             "back-edge block .\\[cont\\]"));
+                             "back-edge block .\\[cont\\]")) << str;
   } else {
     ASSERT_EQ(SPV_SUCCESS, ValidateInstructions());
   }
@@ -933,8 +1045,8 @@ TEST_P(ValidateCFG, BranchOutOfConstructBad) {
   Block merge("merge");
   Block exit("exit", SpvOpReturn);
 
-  entry.setBody("%cond    = OpSLessThan %intt %one %two\n");
-  if (is_shader) loop.setBody("OpLoopMerge %merge %loop None\n");
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) loop.SetBody("OpLoopMerge %merge %loop None\n");
 
   string str = header(GetParam()) + nameOps("cont", "loop") + types_consts() +
                "%func    = OpFunction %voidt None %funct\n";
@@ -987,11 +1099,11 @@ OpDecorate %id BuiltIn GlobalInvocationId
 %main      = OpFunction %void None %voidf
 )";
 
-  entry.setBody(
-    "%idval    = OpLoad %uvec3 %id\n"
-    "%x        = OpCompositeExtract %u32 %idval 0\n"
-    "%selector = OpUMod %u32 %x %three\n"
-    "OpSelectionMerge %phi None\n");
+  entry.SetBody(
+      "%idval    = OpLoad %uvec3 %id\n"
+      "%x        = OpCompositeExtract %u32 %idval 0\n"
+      "%selector = OpUMod %u32 %x %three\n"
+      "OpSelectionMerge %phi None\n");
   str += entry >> vector<Block>({def, case0, case1, case2});
   str += case1 >> phi;
   str += def;
@@ -1001,7 +1113,198 @@ OpDecorate %id BuiltIn GlobalInvocationId
   str += "OpFunctionEnd";
 
   CompileSuccessfully(str);
-  ASSERT_EQ(SPV_SUCCESS, ValidateInstructions());
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
+}
+
+TEST_F(ValidateCFG, LoopWithZeroBackEdgesBad) {
+  string str = R"(
+           OpCapability Shader
+           OpMemoryModel Logical GLSL450
+           OpEntryPoint Fragment %main "main"
+           OpName %loop "loop"
+%voidt   = OpTypeVoid
+%funct   = OpTypeFunction %voidt
+%main    = OpFunction %voidt None %funct
+%loop    = OpLabel
+           OpLoopMerge %exit %exit None
+           OpBranch %exit
+%exit    = OpLabel
+           OpReturn
+           OpFunctionEnd
+)";
+  CompileSuccessfully(str);
+  ASSERT_EQ(SPV_ERROR_INVALID_CFG, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      MatchesRegex("Loop header .\\[loop\\] is targeted by "
+                   "0 back-edge blocks but the standard requires exactly "
+                   "one"));
+}
+
+TEST_F(ValidateCFG, LoopWithBackEdgeFromUnreachableContinueConstructGood) {
+  string str = R"(
+           OpCapability Shader
+           OpMemoryModel Logical GLSL450
+           OpEntryPoint Fragment %main "main"
+           OpName %loop "loop"
+%voidt   = OpTypeVoid
+%funct   = OpTypeFunction %voidt
+%floatt  = OpTypeFloat 32
+%boolt   = OpTypeBool
+%one     = OpConstant %floatt 1
+%two     = OpConstant %floatt 2
+%main    = OpFunction %voidt None %funct
+%entry   = OpLabel
+           OpBranch %loop
+%loop    = OpLabel
+           OpLoopMerge %exit %cont None
+           OpBranch %16
+%16      = OpLabel
+%cond    = OpFOrdLessThan %boolt %one %two
+           OpBranchConditional %cond %body %exit
+%body    = OpLabel
+           OpReturn
+%cont    = OpLabel   ; Reachable only from OpLoopMerge ContinueTarget parameter
+           OpBranch %loop ; Should be considered a back-edge
+%exit    = OpLabel
+           OpReturn
+           OpFunctionEnd
+)";
+
+  CompileSuccessfully(str);
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions()) << getDiagnosticString();
+}
+
+TEST_P(ValidateCFG,
+       NestedConstructWithUnreachableMergeBlockBranchingToOuterMergeBlock) {
+  // Test for https://github.com/KhronosGroup/SPIRV-Tools/issues/297
+  // The nested construct has an unreachable merge block.  In the
+  // augmented CFG that merge block
+  // we still determine that the
+  bool is_shader = GetParam() == SpvCapabilityShader;
+  Block entry("entry", SpvOpBranchConditional);
+  Block inner_head("inner_head", SpvOpBranchConditional);
+  Block inner_true("inner_true", SpvOpReturn);
+  Block inner_false("inner_false", SpvOpReturn);
+  Block inner_merge("inner_merge");
+  Block exit("exit", SpvOpReturn);
+
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) {
+    entry.AppendBody("OpSelectionMerge %exit None\n");
+    inner_head.SetBody("OpSelectionMerge %inner_merge None\n");
+  }
+
+  string str = header(GetParam()) + nameOps("entry", "inner_merge", "exit") +
+               types_consts() + "%func    = OpFunction %voidt None %funct\n";
+
+  str += entry >> vector<Block>({inner_head, exit});
+  str += inner_head >> vector<Block>({inner_true, inner_false});
+  str += inner_true;
+  str += inner_false;
+  str += inner_merge >> exit;
+  str += exit;
+  str += "OpFunctionEnd";
+
+  CompileSuccessfully(str);
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions()) << getDiagnosticString();
+}
+
+TEST_P(ValidateCFG, ContinueTargetCanBeMergeBlockForNestedStructureGood) {
+  // This example is valid.  It shows that the validator can't just add
+  // an edge from the loop head to the continue target.  If that edge
+  // is added, then the "if_merge" block is both the continue target
+  // for the loop and also the merge block for the nested selection, but
+  // then it wouldn't be dominated by "if_head", the header block for the
+  // nested selection.
+  bool is_shader = GetParam() == SpvCapabilityShader;
+  Block entry("entry");
+  Block loop("loop");
+  Block if_head("if_head", SpvOpBranchConditional);
+  Block if_true("if_true");
+  Block if_merge("if_merge", SpvOpBranchConditional);
+  Block merge("merge", SpvOpReturn);
+
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) {
+    loop.SetBody("OpLoopMerge %merge %if_merge None\n");
+    if_head.SetBody("OpSelectionMerge %if_merge None\n");
+  }
+
+  string str = header(GetParam()) + nameOps("entry", "loop", "if_head",
+                                            "if_true", "if_merge", "merge") +
+               types_consts() + "%func    = OpFunction %voidt None %funct\n";
+
+  str += entry >> loop;
+  str += loop >> if_head;
+  str += if_head >> vector<Block>({if_true, if_merge});
+  str += if_true >> if_merge;
+  str += if_merge >> vector<Block>({loop, merge});
+  str += merge;
+  str += "OpFunctionEnd";
+
+  CompileSuccessfully(str);
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions()) << getDiagnosticString();
+}
+
+TEST_P(ValidateCFG, SingleLatchBlockMultipleBranchesToLoopHeader) {
+  // This test case ensures we allow both branches of a loop latch block
+  // to go back to the loop header.  It still counts as a single back edge.
+  bool is_shader = GetParam() == SpvCapabilityShader;
+  Block entry("entry");
+  Block loop("loop", SpvOpBranchConditional);
+  Block latch("latch", SpvOpBranchConditional);
+  Block merge("merge", SpvOpReturn);
+
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) {
+    loop.SetBody("OpLoopMerge %merge %latch None\n");
+  }
+
+  string str = header(GetParam()) + nameOps("entry", "loop", "latch", "merge") +
+               types_consts() + "%func    = OpFunction %voidt None %funct\n";
+
+  str += entry >> loop;
+  str += loop >> vector<Block>({latch, merge});
+  str += latch >> vector<Block>({loop, loop}); // This is the key
+  str += merge;
+  str += "OpFunctionEnd";
+
+  CompileSuccessfully(str);
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions()) << str
+                                                 << getDiagnosticString();
+}
+
+TEST_P(ValidateCFG, SingleLatchBlockHeaderContinueTargetIsItselfGood) {
+  // This test case ensures we don't count a Continue Target from a loop
+  // header to itself as a self-loop when computing back edges.
+  // Also, it detects that there is an edge from %latch to the pseudo-exit
+  // node, rather than from %loop.  In particular, it detects that we
+  // have used the *reverse* textual order of blocks when computing
+  // predecessor traversal roots.
+  bool is_shader = GetParam() == SpvCapabilityShader;
+  Block entry("entry");
+  Block loop("loop");
+  Block latch("latch");
+  Block merge("merge", SpvOpReturn);
+
+  entry.SetBody("%cond    = OpSLessThan %intt %one %two\n");
+  if (is_shader) {
+    loop.SetBody("OpLoopMerge %merge %loop None\n");
+  }
+
+  string str = header(GetParam()) + nameOps("entry", "loop", "latch", "merge") +
+               types_consts() + "%func    = OpFunction %voidt None %funct\n";
+
+  str += entry >> loop;
+  str += loop >> latch;
+  str += latch >> loop;
+  str += merge;
+  str += "OpFunctionEnd";
+
+  CompileSuccessfully(str);
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions()) << str
+                                                 << getDiagnosticString();
 }
 
 /// TODO(umar): Switch instructions

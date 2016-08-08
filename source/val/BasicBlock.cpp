@@ -26,6 +26,7 @@
 
 #include "BasicBlock.h"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -76,12 +77,16 @@ void BasicBlock::RegisterBranchInstruction(SpvOp branch_instruction) {
   return;
 }
 
-void BasicBlock::SetSuccessorsUnsafe(std::vector<BasicBlock*>&& others) {
-  successors_ = std::move(others);
+bool BasicBlock::dominates(const BasicBlock& other) const {
+  return (this == &other) ||
+         !(other.dom_end() ==
+           std::find(other.dom_begin(), other.dom_end(), this));
 }
 
-void BasicBlock::SetPredecessorsUnsafe(std::vector<BasicBlock*>&& others) {
-  predecessors_ = std::move(others);
+bool BasicBlock::postdominates(const BasicBlock& other) const {
+  return (this == &other) ||
+         !(other.pdom_end() ==
+           std::find(other.pdom_begin(), other.pdom_end(), this));
 }
 
 BasicBlock::DominatorIterator::DominatorIterator() : current_(nullptr) {}
