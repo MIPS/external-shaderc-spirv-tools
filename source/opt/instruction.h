@@ -85,7 +85,18 @@ class Instruction {
   Instruction(const spv_parsed_instruction_t& inst,
               std::vector<Instruction>&& dbg_line = {});
 
+  Instruction(const Instruction&) = default;
+  Instruction& operator=(const Instruction&) = default;
+
+  Instruction(Instruction&&) = default;
+  Instruction& operator=(Instruction&&) = default;
+
   SpvOp opcode() const { return opcode_; }
+  // Sets the opcode of this instruction to a specific opcode. Note this may
+  // invalidate the instruction.
+  // TODO(qining): Remove this function when instruction building and insertion
+  // is well implemented.
+  void SetOpcode(SpvOp op) { opcode_ = op; }
   uint32_t type_id() const { return type_id_; }
   uint32_t result_id() const { return result_id_; }
   // Returns the vector of line-related debug instructions attached to this

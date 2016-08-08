@@ -27,36 +27,48 @@
 #ifndef LIBSPIRV_VALIDATE_H_
 #define LIBSPIRV_VALIDATE_H_
 
-#include <algorithm>
-#include <array>
 #include <functional>
-#include <list>
-#include <map>
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "assembly_grammar.h"
-#include "binary.h"
-#include "diagnostic.h"
 #include "instruction.h"
 #include "spirv-tools/libspirv.h"
-#include "spirv_definition.h"
 #include "table.h"
-#include "val/BasicBlock.h"
-
-// Structures
 
 namespace libspirv {
 
 class ValidationState_t;
+class BasicBlock;
 
 /// A function that returns a vector of BasicBlocks given a BasicBlock. Used to
 /// get the successor and predecessor nodes of a CFG block
 using get_blocks_func =
     std::function<const std::vector<BasicBlock*>*(const BasicBlock*)>;
+
+/// @brief Depth first traversal starting from the \p entry BasicBlock
+///
+/// This function performs a depth first traversal from the \p entry
+/// BasicBlock and calls the pre/postorder functions when it needs to process
+/// the node in pre order, post order. It also calls the backedge function
+/// when a back edge is encountered.
+///
+/// @param[in] entry      The root BasicBlock of a CFG
+/// @param[in] successor_func  A function which will return a pointer to the
+///                            successor nodes
+/// @param[in] preorder   A function that will be called for every block in a
+///                       CFG following preorder traversal semantics
+/// @param[in] postorder  A function that will be called for every block in a
+///                       CFG following postorder traversal semantics
+/// @param[in] backedge   A function that will be called when a backedge is
+///                       encountered during a traversal
+/// NOTE: The @p successor_func and predecessor_func each return a pointer to a
+/// collection such that iterators to that collection remain valid for the
+/// lifetime of the algorithm.
+void DepthFirstTraversal(
+    const BasicBlock* entry, get_blocks_func successor_func,
+    std::function<void(const BasicBlock*)> preorder,
+    std::function<void(const BasicBlock*)> postorder,
+    std::function<void(const BasicBlock*, const BasicBlock*)> backedge);
 
 /// @brief Calculates dominator edges for a set of blocks
 ///
@@ -89,6 +101,18 @@ std::vector<std::pair<BasicBlock*, BasicBlock*>> CalculateDominators(
 /// @return SPV_SUCCESS if no errors are found. SPV_ERROR_INVALID_CFG otherwise
 spv_result_t PerformCfgChecks(ValidationState_t& _);
 
+/// @brief This function checks all ID definitions dominate their use in the
+/// CFG.
+///
+/// This function will iterate over all ID definitions that are defined in the
+/// functions of a module and make sure that the definitions appear in a
+/// block that dominates their use.
+///
+/// @param[in] _ the validation state of the module
+///
+/// @return SPV_SUCCESS if no errors are found. SPV_ERROR_INVALID_ID otherwise
+spv_result_t CheckIdDefinitionDominateUse(const ValidationState_t& _);
+
 /// @brief Updates the immediate dominator for each of the block edges
 ///
 /// Updates the immediate dominator of the blocks for each of the edges
@@ -115,9 +139,8 @@ spv_result_t ModuleLayoutPass(ValidationState_t& _,
 spv_result_t CfgPass(ValidationState_t& _,
                      const spv_parsed_instruction_t* inst);
 
-/// Performs SSA validation of a module
-spv_result_t SsaPass(ValidationState_t& _,
-                     const spv_parsed_instruction_t* inst);
+/// Performs Id and SSA validation of a module
+spv_result_t IdPass(ValidationState_t& _, const spv_parsed_instruction_t* inst);
 
 /// Performs instruction validation.
 spv_result_t InstructionPass(ValidationState_t& _,

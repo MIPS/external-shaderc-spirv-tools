@@ -24,20 +24,39 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
-#ifndef LIBSPIRV_BINARY_H_
-#define LIBSPIRV_BINARY_H_
+#include "val/Id.h"
 
-#include "spirv-tools/libspirv.h"
-#include "spirv/1.1/spirv.h"
-#include "spirv_definition.h"
+namespace libspirv {
+#define OPERATOR(OP)                               \
+  bool operator OP(const Id& lhs, const Id& rhs) { \
+    return lhs.id_ OP rhs.id_;                     \
+  }                                                \
+  bool operator OP(const Id& lhs, uint32_t rhs) { return lhs.id_ OP rhs; }
 
-// Functions
+OPERATOR(<)
+OPERATOR(==)
+#undef OPERATOR
 
-// Grabs the header from the SPIR-V module given in the binary parameter. The
-// endian parameter specifies the endianness of the binary module. On success,
-// returns SPV_SUCCESS and writes the parsed header into *header.
-spv_result_t spvBinaryHeaderGet(const spv_const_binary binary,
-                                const spv_endianness_t endian,
-                                spv_header_t* header);
+Id::Id(const uint32_t result_id)
+    : id_(result_id),
+      type_id_(0),
+      opcode_(SpvOpNop),
+      defining_function_(nullptr),
+      defining_block_(nullptr),
+      uses_(),
+      words_(0) {}
 
-#endif  // LIBSPIRV_BINARY_H_
+Id::Id(const spv_parsed_instruction_t* inst, Function* function,
+       BasicBlock* block)
+    : id_(inst->result_id),
+      type_id_(inst->type_id),
+      opcode_(static_cast<SpvOp>(inst->opcode)),
+      defining_function_(function),
+      defining_block_(block),
+      uses_(),
+      words_(inst->words, inst->words + inst->num_words) {}
+
+void Id::RegisterUse(const BasicBlock* block) {
+  if (block) { uses_.insert(block); }
+}
+}  // namespace libspirv
