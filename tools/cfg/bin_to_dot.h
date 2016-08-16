@@ -24,24 +24,16 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
-#include "function.h"
+#ifndef BIN_TO_DOT_H_
+#define BIN_TO_DOT_H_
 
-namespace spvtools {
-namespace ir {
+#include <iostream>
+#include "spirv-tools/libspirv.h"
 
-void Function::ForEachInst(const std::function<void(Instruction*)>& f) {
-  def_inst_->ForEachInst(f);
-  for (auto& param : params_) param->ForEachInst(f);
-  for (auto& bb : blocks_) bb->ForEachInst(f);
-  end_inst_.ForEachInst(f);
-}
+// Dumps the control flow graph for the given module to the output stream.
+// Returns SPV_SUCCESS on succes.
+spv_result_t BinaryToDot(const spv_const_context context, const uint32_t* words,
+                         size_t num_words, std::iostream* out,
+                         spv_diagnostic* diagnostic);
 
-void Function::ToBinary(std::vector<uint32_t>* binary, bool skip_nop) const {
-  def_inst_->ToBinary(binary, skip_nop);
-  for (const auto& param : params_) param->ToBinary(binary, skip_nop);
-  for (const auto& bb : blocks_) bb->ToBinary(binary, skip_nop);
-  end_inst_.ToBinary(binary, skip_nop);
-}
-
-}  // namespace ir
-}  // namespace spvtools
+#endif // BIN_TO_DOT_H_

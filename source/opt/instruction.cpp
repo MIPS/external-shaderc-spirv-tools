@@ -27,6 +27,7 @@
 #include "instruction.h"
 
 #include <cassert>
+#include <initializer_list>
 
 #include "reflect.h"
 
@@ -48,6 +49,36 @@ Instruction::Instruction(const spv_parsed_instruction_t& inst,
         inst.words + current_payload.offset + current_payload.num_words);
     operands_.emplace_back(current_payload.type, std::move(words));
   }
+}
+
+Instruction::Instruction(SpvOp op, uint32_t ty_id, uint32_t res_id,
+                         const std::vector<Operand>& in_operands)
+    : opcode_(op), type_id_(ty_id), result_id_(res_id), operands_() {
+  if (type_id_ != 0) {
+    operands_.emplace_back(spv_operand_type_t::SPV_OPERAND_TYPE_TYPE_ID,
+                           std::initializer_list<uint32_t>{type_id_});
+  }
+  if (result_id_ != 0) {
+    operands_.emplace_back(spv_operand_type_t::SPV_OPERAND_TYPE_RESULT_ID,
+                           std::initializer_list<uint32_t>{result_id_});
+  }
+  operands_.insert(operands_.end(), in_operands.begin(), in_operands.end());
+}
+
+Instruction::Instruction(Instruction&& that)
+    : opcode_(that.opcode_),
+      type_id_(that.type_id_),
+      result_id_(that.result_id_),
+      operands_(std::move(that.operands_)),
+      dbg_line_insts_(std::move(that.dbg_line_insts_)) {}
+
+Instruction& Instruction::operator=(Instruction&& that) {
+  opcode_ = that.opcode_;
+  type_id_ = that.type_id_;
+  result_id_ = that.result_id_;
+  operands_ = std::move(that.operands_);
+  dbg_line_insts_ = std::move(that.dbg_line_insts_);
+  return *this;
 }
 
 uint32_t Instruction::GetSingleWordOperand(uint32_t index) const {

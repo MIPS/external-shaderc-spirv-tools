@@ -30,19 +30,10 @@
 #include <memory>
 
 #include "module.h"
+#include "pass.h"
 
 namespace spvtools {
 namespace opt {
-
-// A pass. All analysis and transformation is done via the Process() method.
-class Pass {
- public:
-  // Returns a descriptive name for this pass.
-  virtual const char* name() const = 0;
-  // Processes the given |module| and returns true if the given |module| is
-  // modified for optimization.
-  virtual bool Process(ir::Module* module) = 0;
-};
 
 // A null pass that does nothing.
 class NullPass : public Pass {
@@ -69,6 +60,17 @@ class StripDebugInfoPass : public Pass {
 class FreezeSpecConstantValuePass : public Pass {
  public:
   const char* name() const override { return "freeze-spec-const"; }
+  bool Process(ir::Module*) override;
+};
+
+// The optimization pass to remove dead constants, including front-end
+// contants: defined by OpConstant, OpConstantComposite, OpConstantTrue and
+// OpConstantFalse; and spec constants: defined by OpSpecConstant,
+// OpSpecConstantComposite, OpSpecConstantTrue, OpSpecConstantFalse and
+// OpSpecConstantOp.
+class EliminateDeadConstantPass : public Pass {
+ public:
+  const char* name() const override { return "eliminate-dead-const"; }
   bool Process(ir::Module*) override;
 };
 

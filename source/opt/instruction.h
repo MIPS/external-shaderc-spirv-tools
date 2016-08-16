@@ -62,6 +62,9 @@ struct Operand {
   Operand(spv_operand_type_t t, std::vector<uint32_t>&& w)
       : type(t), words(std::move(w)) {}
 
+  Operand(spv_operand_type_t t, const std::vector<uint32_t>& w)
+      : type(t), words(w) {}
+
   spv_operand_type_t type;      // Type of this logical operand.
   std::vector<uint32_t> words;  // Binary segments of this logical operand.
 
@@ -69,8 +72,11 @@ struct Operand {
 };
 
 // A SPIR-V instruction. It contains the opcode and any additional logical
-// operand. It may also contain line-related debug instruction (OpLine,
-// OpNoLine) directly appearing before this instruction.
+// operand, including the result id (if any) and result type id (if any). It
+// may also contain line-related debug instruction (OpLine, OpNoLine) directly
+// appearing before this instruction. Note that the result id of an instruction
+// should never change after the instruction being built. If the result id
+// needs to change, the user should create a new instruction instead.
 class Instruction {
  public:
   // Creates a default OpNop instruction.
@@ -85,11 +91,16 @@ class Instruction {
   Instruction(const spv_parsed_instruction_t& inst,
               std::vector<Instruction>&& dbg_line = {});
 
+  // Creates an instruction with the given opcode |op|, type id: |ty_id|,
+  // result id: |res_id| and input operands: |in_operands|.
+  Instruction(SpvOp op, uint32_t ty_id, uint32_t res_id,
+              const std::vector<Operand>& in_operands);
+
   Instruction(const Instruction&) = default;
   Instruction& operator=(const Instruction&) = default;
 
-  Instruction(Instruction&&) = default;
-  Instruction& operator=(Instruction&&) = default;
+  Instruction(Instruction&&);
+  Instruction& operator=(Instruction&&);
 
   SpvOp opcode() const { return opcode_; }
   // Sets the opcode of this instruction to a specific opcode. Note this may
@@ -120,8 +131,10 @@ class Instruction {
   // not expected to be used with logical operands consisting of multiple SPIR-V
   // words.
   uint32_t GetSingleWordOperand(uint32_t index) const;
-  // Sets the |index|-th operand's data to the given |data|.
-  inline void SetOperand(uint32_t index, std::vector<uint32_t>&& data);
+  // Sets the |index|-th in-operand's data to the given |data|.
+  inline void SetInOperand(uint32_t index, std::vector<uint32_t>&& data);
+  // Sets the result type id.
+  inline void SetResultType(uint32_t ty_id);
 
   // The following methods are similar to the above, but are for in operands.
   uint32_t NumInOperands() const {
@@ -171,10 +184,19 @@ inline const Operand& Instruction::GetOperand(uint32_t index) const {
   return operands_[index];
 };
 
-inline void Instruction::SetOperand(uint32_t index,
-                                    std::vector<uint32_t>&& data) {
-  assert(index < operands_.size() && "operand index out of bound");
-  operands_[index].words = std::move(data);
+inline void Instruction::SetInOperand(uint32_t index,
+                                      std::vector<uint32_t>&& data) {
+  assert(index + TypeResultIdCount() < operands_.size() &&
+         "operand index out of bound");
+  operands_[index + TypeResultIdCount()].words = std::move(data);
+}
+
+inline void Instruction::SetResultType(uint32_t ty_id) {
+  if (type_id_ != 0) {
+    type_id_ = ty_id;
+    assert(operands_.front().type == SPV_OPERAND_TYPE_TYPE_ID);
+    operands_.front().words = {ty_id};
+  }
 }
 
 inline bool Instruction::IsNop() const {

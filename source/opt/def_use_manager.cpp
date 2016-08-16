@@ -36,66 +36,11 @@ namespace spvtools {
 namespace opt {
 namespace analysis {
 
-void DefUseManager::AnalyzeDefUse(ir::Module* module) {
-  module->ForEachInst(std::bind(&DefUseManager::AnalyzeInstDefUse, this,
-                                std::placeholders::_1));
-}
-
-ir::Instruction* DefUseManager::GetDef(uint32_t id) {
-  if (id_to_def_.count(id) == 0) return nullptr;
-  return id_to_def_.at(id);
-}
-
-UseList* DefUseManager::GetUses(uint32_t id) {
-  if (id_to_uses_.count(id) == 0) return nullptr;
-  return &id_to_uses_.at(id);
-}
-
-bool DefUseManager::KillDef(uint32_t id) {
-  if (id_to_def_.count(id) == 0) return false;
-
-  // Go through all ids usd by this instruction, remove this instruction's uses
-  // of them.
-  for (const auto use_id : result_id_to_used_ids_[id]) {
-    if (id_to_uses_.count(use_id) == 0) continue;
-    auto& uses = id_to_uses_[use_id];
-    for (auto it = uses.begin(); it != uses.end();) {
-      if (it->inst->result_id() == id) {
-        it = uses.erase(it);
-      } else {
-        ++it;
-      }
-    }
-    if (uses.empty()) id_to_uses_.erase(use_id);
-  }
-  result_id_to_used_ids_.erase(id);
-
-  id_to_uses_.erase(id);  // Remove all uses of this id.
-  // This must happen at the last since we use information inside the instuction
-  // in the above.
-  id_to_def_[id]->ToNop();
-  id_to_def_.erase(id);
-  return true;
-}
-
-bool DefUseManager::ReplaceAllUsesWith(uint32_t before, uint32_t after) {
-  if (before == after) return false;
-  if (id_to_uses_.count(before) == 0) return false;
-
-  for (auto it = id_to_uses_[before].cbegin(); it != id_to_uses_[before].cend();
-       ++it) {
-    // Make the modification in the instruction.
-    it->inst->SetOperand(it->operand_index, {after});
-    // Register the use of |after| id into id_to_uses_.
-    // TODO(antiagainst): de-duplication.
-    id_to_uses_[after].push_back({it->inst, it->operand_index});
-  }
-  id_to_uses_.erase(before);
-  return true;
-}
-
 void DefUseManager::AnalyzeInstDefUse(ir::Instruction* inst) {
   const uint32_t def_id = inst->result_id();
+  // Clear the records of def_id first if it has been recorded before.
+  ClearDef(def_id);
+
   if (def_id != 0) id_to_def_[def_id] = inst;
 
   for (uint32_t i = 0; i < inst->NumOperands(); ++i) {
@@ -114,6 +59,80 @@ void DefUseManager::AnalyzeInstDefUse(ir::Instruction* inst) {
         break;
     }
   }
+}
+
+ir::Instruction* DefUseManager::GetDef(uint32_t id) {
+  if (id_to_def_.count(id) == 0) return nullptr;
+  return id_to_def_.at(id);
+}
+
+UseList* DefUseManager::GetUses(uint32_t id) {
+  if (id_to_uses_.count(id) == 0) return nullptr;
+  return &id_to_uses_.at(id);
+}
+
+bool DefUseManager::KillDef(uint32_t id) {
+  if (id_to_def_.count(id) == 0) return false;
+
+  ir::Instruction* defining_inst = id_to_def_.at(id);
+  ClearDef(id);
+  defining_inst->ToNop();
+  return true;
+}
+
+bool DefUseManager::ReplaceAllUsesWith(uint32_t before, uint32_t after) {
+  if (before == after) return false;
+  if (id_to_uses_.count(before) == 0) return false;
+
+  for (auto it = id_to_uses_[before].cbegin(); it != id_to_uses_[before].cend();
+       ++it) {
+    const uint32_t type_result_id_count =
+        (it->inst->result_id() != 0) + (it->inst->type_id() != 0);
+    if (!it->operand_index) {
+      assert(it->inst->type_id() != 0 &&
+             "result type id considered as using while the instruction doesn't "
+             "have a result type id");
+      it->inst->SetResultType(after);
+    } else {
+      assert(it->operand_index >= type_result_id_count &&
+             "the operand to be set is not an in-operand.");
+      uint32_t in_operand_pos = it->operand_index - type_result_id_count;
+      // Make the modification in the instruction.
+      it->inst->SetInOperand(in_operand_pos, {after});
+    }
+    // Register the use of |after| id into id_to_uses_.
+    // TODO(antiagainst): de-duplication.
+    id_to_uses_[after].push_back({it->inst, it->operand_index});
+  }
+  id_to_uses_.erase(before);
+  return true;
+}
+
+void DefUseManager::AnalyzeDefUse(ir::Module* module) {
+  module->ForEachInst(std::bind(&DefUseManager::AnalyzeInstDefUse, this,
+                                std::placeholders::_1));
+}
+
+void DefUseManager::ClearDef(uint32_t def_id) {
+  if (id_to_def_.count(def_id) == 0) return;
+
+  // Go through all ids used by this instruction, remove this instruction's
+  // uses of them.
+  for (const auto use_id : result_id_to_used_ids_[def_id]) {
+    if (id_to_uses_.count(use_id) == 0) continue;
+    auto& uses = id_to_uses_[use_id];
+    for (auto it = uses.begin(); it != uses.end();) {
+      if (it->inst->result_id() == def_id) {
+        it = uses.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    if (uses.empty()) id_to_uses_.erase(use_id);
+  }
+  result_id_to_used_ids_.erase(def_id);
+  id_to_uses_.erase(def_id);  // Remove all uses of this id.
+  id_to_def_.erase(def_id);
 }
 
 }  // namespace analysis

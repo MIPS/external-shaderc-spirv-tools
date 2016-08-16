@@ -44,6 +44,11 @@ add_spvtools_unittest(TARGET pass_freeze_spec_const
   LIBS SPIRV-Tools-opt ${SPIRV_TOOLS}
 )
 
+add_spvtools_unittest(TARGET pass_eliminate_dead_const
+  SRCS test_eliminate_dead_const.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt ${SPIRV_TOOLS}
+)
+
 add_spvtools_unittest(TARGET pass_utils
   SRCS test_utils.cpp pass_utils.cpp
   LIBS SPIRV-Tools-opt ${SPIRV_TOOLS}
@@ -56,5 +61,20 @@ add_spvtools_unittest(TARGET def_use
 
 add_spvtools_unittest(TARGET assembly_builder
   SRCS test_assembly_builder.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt ${SPIRV_TOOLS}
+)
+
+add_spvtools_unittest(TARGET types
+  SRCS test_types.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET type_manager
+  SRCS test_type_manager.cpp
+  LIBS SPIRV-Tools-opt ${SPIRV_TOOLS}
+)
+
+add_spvtools_unittest(TARGET iterator
+  SRCS test_iterator.cpp
   LIBS SPIRV-Tools-opt ${SPIRV_TOOLS}
 )

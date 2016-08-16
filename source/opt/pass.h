@@ -24,24 +24,28 @@
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 // MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
-#include "function.h"
+#ifndef LIBSPIRV_OPT_PASS_H_
+#define LIBSPIRV_OPT_PASS_H_
+
+#include <memory>
+
+#include "module.h"
 
 namespace spvtools {
-namespace ir {
+namespace opt {
 
-void Function::ForEachInst(const std::function<void(Instruction*)>& f) {
-  def_inst_->ForEachInst(f);
-  for (auto& param : params_) param->ForEachInst(f);
-  for (auto& bb : blocks_) bb->ForEachInst(f);
-  end_inst_.ForEachInst(f);
-}
+// Abstract class of a pass. All passes should implement this abstract class
+// and all analysis and transformation is done via the Process() method.
+class Pass {
+ public:
+  // Returns a descriptive name for this pass.
+  virtual const char* name() const = 0;
+  // Processes the given |module| and returns true if the given |module| is
+  // modified for optimization.
+  virtual bool Process(ir::Module* module) = 0;
+};
 
-void Function::ToBinary(std::vector<uint32_t>* binary, bool skip_nop) const {
-  def_inst_->ToBinary(binary, skip_nop);
-  for (const auto& param : params_) param->ToBinary(binary, skip_nop);
-  for (const auto& bb : blocks_) bb->ToBinary(binary, skip_nop);
-  end_inst_.ToBinary(binary, skip_nop);
-}
-
-}  // namespace ir
+}  // namespace opt
 }  // namespace spvtools
+
+#endif  // LIBSPIRV_OPT_PASS_H_

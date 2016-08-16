@@ -7,8 +7,11 @@ add_library(SPIRV-Tools-opt
   libspirv.hpp
   module.h
   reflect.h
+  pass.h
   passes.h
   pass_manager.h
+  types.h
+  type_manager.h
 
   def_use_manager.cpp
   function.cpp
@@ -17,6 +20,8 @@ add_library(SPIRV-Tools-opt
   libspirv.cpp
   module.cpp
   passes.cpp
+  types.cpp
+  type_manager.cpp
 )
 
 spvtools_default_compile_options(SPIRV-Tools-opt)

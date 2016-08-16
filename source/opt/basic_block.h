@@ -31,10 +31,12 @@
 #define LIBSPIRV_OPT_BASIC_BLOCK_H_
 
 #include <functional>
-#include <vector>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "instruction.h"
+#include "iterator.h"
 
 namespace spvtools {
 namespace ir {
@@ -44,15 +46,21 @@ class Function;
 // A SPIR-V basic block.
 class BasicBlock {
  public:
-  // Creates a basic block with the given enclosing |function| and starting
-  // |label|.
-  BasicBlock(Instruction&& label)
-      : function_(nullptr), label_(std::move(label)) {}
+  using iterator = UptrVectorIterator<Instruction>;
+  using const_iterator = UptrVectorIterator<Instruction, true>;
+
+  // Creates a basic block with the given starting |label|.
+  inline explicit BasicBlock(std::unique_ptr<Instruction> label);
 
   // Sets the enclosing function for this basic block.
   void SetParent(Function* function) { function_ = function; }
   // Appends an instruction to this basic block.
-  void AddInstruction(Instruction&& i) { insts_.push_back(std::move(i)); }
+  inline void AddInstruction(std::unique_ptr<Instruction> i);
+
+  iterator begin() { return iterator(&insts_, insts_.begin()); }
+  iterator end() { return iterator(&insts_, insts_.end()); }
+  const_iterator cbegin() { return const_iterator(&insts_, insts_.cbegin()); }
+  const_iterator cend() { return const_iterator(&insts_, insts_.cend()); }
 
   // Runs the given function |f| on each instruction in this basic block.
   inline void ForEachInst(const std::function<void(Instruction*)>& f);
@@ -62,21 +70,31 @@ class BasicBlock {
   inline void ToBinary(std::vector<uint32_t>* binary, bool skip_nop) const;
 
  private:
-  Function* function_;              // The enclosing function.
-  Instruction label_;               // The label starting this basic block.
-  std::vector<Instruction> insts_;  // Instructions inside this basic block.
+  // The enclosing function.
+  Function* function_;
+  // The label starting this basic block.
+  std::unique_ptr<Instruction> label_;
+  // Instructions inside this basic block.
+  std::vector<std::unique_ptr<Instruction>> insts_;
 };
+
+inline BasicBlock::BasicBlock(std::unique_ptr<Instruction> label)
+    : function_(nullptr), label_(std::move(label)) {}
+
+inline void BasicBlock::AddInstruction(std::unique_ptr<Instruction> i) {
+  insts_.emplace_back(std::move(i));
+}
 
 inline void BasicBlock::ForEachInst(
     const std::function<void(Instruction*)>& f) {
-  label_.ForEachInst(f);
-  for (auto& inst : insts_) f(&inst);
+  label_->ForEachInst(f);
+  for (auto& inst : insts_) f(inst.get());
 }
 
 inline void BasicBlock::ToBinary(std::vector<uint32_t>* binary,
                                  bool skip_nop) const {
-  label_.ToBinary(binary, skip_nop);
-  for (const auto& inst : insts_) inst.ToBinary(binary, skip_nop);
+  label_->ToBinary(binary, skip_nop);
+  for (const auto& inst : insts_) inst->ToBinary(binary, skip_nop);
 }
 
 }  // namespace ir

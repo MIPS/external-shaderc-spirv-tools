@@ -40,7 +40,8 @@ void IrLoader::AddInstruction(const spv_parsed_instruction_t* inst) {
     return;
   }
 
-  Instruction spv_inst(*inst, std::move(dbg_line_info_));
+  std::unique_ptr<Instruction> spv_inst(
+      new Instruction(*inst, std::move(dbg_line_info_)));
   dbg_line_info_.clear();
   // Handle function and basic block boundaries first, then normal
   // instructions.
@@ -51,7 +52,7 @@ void IrLoader::AddInstruction(const spv_parsed_instruction_t* inst) {
   } else if (opcode == SpvOpFunctionEnd) {
     assert(function_ != nullptr);
     assert(block_ == nullptr);
-    module_->AddFunction(std::move(*function_.release()));
+    module_->AddFunction(std::move(function_));
     function_ = nullptr;
   } else if (opcode == SpvOpLabel) {
     assert(function_ != nullptr);
@@ -61,7 +62,7 @@ void IrLoader::AddInstruction(const spv_parsed_instruction_t* inst) {
     assert(function_ != nullptr);
     assert(block_ != nullptr);
     block_->AddInstruction(std::move(spv_inst));
-    function_->AddBasicBlock(std::move(*block_.release()));
+    function_->AddBasicBlock(std::move(block_));
     block_ = nullptr;
   } else {
     if (function_ == nullptr) {  // Outside function definition
@@ -84,10 +85,9 @@ void IrLoader::AddInstruction(const spv_parsed_instruction_t* inst) {
         module_->AddAnnotationInst(std::move(spv_inst));
       } else if (IsTypeInst(opcode)) {
         module_->AddType(std::move(spv_inst));
-      } else if (IsConstantInst(opcode)) {
-        module_->AddConstant(std::move(spv_inst));
-      } else if (opcode == SpvOpVariable) {
-        module_->AddGlobalVariable(std::move(spv_inst));
+      } else if (IsConstantInst(opcode) || opcode == SpvOpVariable ||
+                 opcode == SpvOpUndef) {
+        module_->AddGlobalValue(std::move(spv_inst));
       } else {
         assert(0 && "unhandled inst type outside function defintion");
       }
@@ -104,15 +104,9 @@ void IrLoader::AddInstruction(const spv_parsed_instruction_t* inst) {
 
 // Resolves internal references among the module, functions, basic blocks, etc.
 // This function should be called after adding all instructions.
-//
-// This concluding call is needed because the whole in memory representation is
-// designed around rvalues and move semantics, which subject to pointer
-// invalidation during module construction internally.
 void IrLoader::EndModule() {
-  for (auto& function : module_->functions()) {
-    for (auto& bb : function.basic_blocks()) {
-      bb.SetParent(&function);
-    }
+  for (auto& function : *module_) {
+    for (auto& bb : function) bb.SetParent(&function);
     function.SetParent(module_);
   }
 }
