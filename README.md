@@ -8,10 +8,12 @@
 The SPIR-V Tools project provides an API and commands for processing SPIR-V
 modules.
 
-The project includes an assembler, binary module parser, disassembler, and
-validator for SPIR-V, all based on a common static library. The library contains
-all of the implementation details, and is used in the standalone tools whilst
-also enabling integration into other code bases directly.
+The project includes an assembler, binary module parser, disassembler,
+validator, and optimizer for SPIR-V. Except for the optimizer, all are based
+on a common static library.  The library contains all of the implementation
+details, and is used in the standalone tools whilst also enabling integration
+into other code bases directly. The optimizer implementation resides in its
+own library.
 
 The interfaces are still under development, and are expected to change.
 
@@ -40,7 +42,7 @@ version.  An API call reports the software version as a C-style string.
 
 ### Assembler, binary parser, and disassembler
 
-* Based on SPIR-V version 1.1 Rev 2
+* Based on SPIR-V version 1.1 Rev 3
 * Support for extended instruction sets:
   * GLSL std450 version 1.0 Rev 3
   * OpenCL version 1.0 Rev 2
@@ -55,13 +57,30 @@ See [`syntax.md`](syntax.md) for the assembly language syntax.
 
 *Warning:* The validator is incomplete.
 
+### Optimizer
+
+*Warning:* The optimizer is still under development and its library interface is
+not yet published.
+
+Currently supported optimizations:
+* [Strip debug info](source/opt/strip_debug_info_pass.h)
+* [Freeze spec constant](source/opt/freeze_spec_constant_value_pass.h)
+* [Fold `OpSpecConstantOp` and `OpSpecConstantComposite`](source/opt/fold_spec_constant_op_and_composite_pass.h)
+* [Unify constants](source/opt/unify_const_pass.h)
+* [Eliminate dead constant](source/opt/eliminate_dead_constant_pass.h)
+
+For the latest list, please refer to `spirv-opt --help`.
+
 ## Source code
 
 The SPIR-V Tools are maintained by members of the The Khronos Group Inc.,
 at https://github.com/KhronosGroup/SPIRV-Tools.
 
 Contributions via merge request are welcome. Changes should:
-* Be provided under the [Khronos license](#license).
+* Be provided under the [Apache 2.0](#license).
+  You'll be prompted with a one-time "click-through" Contributor's License
+  Agreement (CLA) dialog as part of submitting your pull request or
+  other contribution to GitHub.
 * Include tests to cover updated functionality.
 * C++ code should follow the [Google C++ Style Guide][cpp-style-guide].
 * Code should be formatted with `clang-format`.  Settings are defined by
@@ -105,7 +124,7 @@ The project uses [CMake][cmake] to generate platform-specific build
 configurations. Assume that `<spirv-dir>` is the root directory of the checked
 out code:
 
-```
+```sh
 cd <spirv-dir>
 git clone https://github.com/KhronosGroup/SPIRV-Headers.git external/spirv-headers
 git clone https://github.com/google/googletest.git external/googletest # optional
@@ -122,8 +141,10 @@ development environment.
 The following CMake options are supported:
 
 * `SPIRV_COLOR_TERMINAL={ON|OFF}`, default `ON` - Enables color console output.
+* `SPIRV_SKIP_TESTS={ON|OFF}`, default `OFF`- Build only the library and
+  the command line tools.  This will prevent the tests from being built.
 * `SPIRV_SKIP_EXECUTABLES={ON|OFF}`, default `OFF`- Build only the library, not
-  the command line tools.  This will also prevent the tests from being built.
+  the command line tools and tests.
 * `SPIRV_USE_SANITIZER=<sanitizer>`, default is no sanitizing - On UNIX
   platforms with an appropriate version of `clang` this option enables the use
   of the sanitizers documented [here][clang-sanitizers].
@@ -234,15 +255,46 @@ This is experimental.
 * `spirv-cfg` - the control flow graph dumper
   * `<spirv-dir>/tools/cfg`
 
+### Utility filters
+
+* `spirv-lesspipe.sh` - Automatically disassembles `.spv` binary files for the
+  `less` program, on compatible systems.  For example, set the `LESSOPEN`
+  environment variable as follows, assuming both `spirv-lesspipe.sh` and
+  `spirv-dis` are on your executable search path:
+  ```
+   export LESSOPEN='| spirv-lesspipe.sh "%s"'
+  ```
+  Then you page through a disassembled module as follows:
+  ```
+  less foo.spv
+  ```
+  * The `spirv-lesspipe.sh` script will pass through any extra arguments to
+    `spirv-dis`.  So, for example, you can turn off colours and friendly ID
+    naming as follows:
+    ```
+    export LESSOPEN='| spirv-lesspipe.sh "%s" --no-color --raw-id'
+    ```
+
+* `50spirv-tools.el` - Automatically disassembles '.spv' binary files when
+  loaded into the emacs text editor, and re-assembles them when saved,
+  provided any modifications to the file are valid.  This functionality
+  must be explicitly requested by defining the symbol
+  SPIRV_TOOLS_INSTALL_EMACS_HELPERS as follows:
+  ```
+  cmake -DSPIRV_TOOLS_INSTALL_EMACS_HELPERS=true ...
+  ```
+
+  In addition, this helper is only installed if the directory /etc/emacs/site-start.d
+  exists, which is typically true if emacs is installed on the system.
+
+  Note that symbol IDs are not currently preserved through a load/edit/save operation.
+  This may change if the ability is added to spirv-as.
+
+
 ### Tests
 
-Tests are only built when googletest is found.
-
-The `<spirv-build-dir>/test/UnitSPIRV` executable runs the project tests.
-It supports the standard `googletest` command line options.
-
-The project also adds a CMake test `spirv-tools-testsuite`, which executes
-`UnitSPIRV`.  That way it's possible to run the tests using `ctest`.
+Tests are only built when googletest is found. Use `ctest` to run all the
+tests.
 
 ## Future Work
 <a name="future"></a>
@@ -262,32 +314,21 @@ This is a work in progress.
 
 ## Licence
 <a name="license"></a>
+Full license terms are in [LICENSE](LICENSE)
 ```
 Copyright (c) 2015-2016 The Khronos Group Inc.
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and/or associated documentation files (the
-"Materials"), to deal in the Materials without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Materials, and to
-permit persons to whom the Materials are furnished to do so, subject to
-the following conditions:
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Materials.
+    http://www.apache.org/licenses/LICENSE-2.0
 
-MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-   https://www.khronos.org/registry/
-
-THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ```
 
 [spirv-registry]: https://www.khronos.org/registry/spir-v/

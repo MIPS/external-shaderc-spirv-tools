@@ -1,36 +1,26 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <cstring>
 #include <iostream>
 #include <vector>
 
+#include "message.h"
+#include "source/opt/build_module.h"
 #include "source/opt/ir_loader.h"
-#include "source/opt/libspirv.hpp"
 #include "source/opt/pass_manager.h"
+#include "source/opt/passes.h"
 #include "tools/io.h"
 
 using namespace spvtools;
@@ -54,8 +44,14 @@ Options:
   --freeze-spec-const
                Freeze the values of specialization constants to their default
                values.
-  --eliminiate-dead-const
+  --eliminate-dead-const
                Eliminate dead constants.
+  --fold-spec-const-op-composite
+               Fold the spec constants defined by OpSpecConstantOp or
+               OpSpecConstantComposite instructions to front-end constants
+               when possible.
+  --unify-const
+               Remove the duplicated constants.
   -h, --help   Print this help.
   --version    Display optimizer version information.
 )",
@@ -69,6 +65,11 @@ int main(int argc, char** argv) {
   spv_target_env target_env = SPV_ENV_UNIVERSAL_1_1;
 
   opt::PassManager pass_manager;
+  pass_manager.SetMessageConsumer([](MessageLevel level, const char* source,
+                                     const spv_position_t& position,
+                                     const char* message) {
+    std::cerr << StringifyMessage(level, source, position, message);
+  });
 
   for (int argi = 1; argi < argc; ++argi) {
     const char* cur_arg = argv[argi];
@@ -92,6 +93,10 @@ int main(int argc, char** argv) {
         pass_manager.AddPass<opt::FreezeSpecConstantValuePass>();
       } else if (0 == strcmp(cur_arg, "--eliminate-dead-const")) {
         pass_manager.AddPass<opt::EliminateDeadConstantPass>();
+      } else if (0 == strcmp(cur_arg, "--fold-spec-const-op-composite")) {
+        pass_manager.AddPass<opt::FoldSpecConstantOpAndCompositePass>();
+      } else if (0 == strcmp(cur_arg, "--unify-const")) {
+        pass_manager.AddPass<opt::UnifyConstantPass>();
       } else if ('\0' == cur_arg[1]) {
         // Setting a filename of "-" to indicate stdin.
         if (!in_file) {
@@ -136,7 +141,8 @@ int main(int argc, char** argv) {
   spvDiagnosticDestroy(diagnostic);
   spvContextDestroy(context);
 
-  std::unique_ptr<ir::Module> module = SpvTools(target_env).BuildModule(source);
+  std::unique_ptr<ir::Module> module = BuildModule(
+      target_env, pass_manager.consumer(), source.data(), source.size());
   pass_manager.Run(module.get());
 
   std::vector<uint32_t> target;

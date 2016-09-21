@@ -1,28 +1,16 @@
 // Copyright (c) 2015-2016 The Khronos Group Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <sstream>
 #include <string>
@@ -31,6 +19,8 @@
 #include "TestFixture.h"
 #include "UnitSPIRV.h"
 #include "gmock/gmock.h"
+#include "source/message.h"
+#include "source/table.h"
 #include "spirv/1.0/OpenCL.std.h"
 
 // Returns true if two spv_parsed_operand_t values are equal.
@@ -247,6 +237,133 @@ TEST_F(BinaryParseTest, EmptyModuleHasValidHeaderAndNoInstructionCallbacks) {
     Parse(words, SPV_SUCCESS, endian_swap);
     EXPECT_EQ(nullptr, diagnostic_);
   }
+}
+
+TEST_F(BinaryParseTest, NullDiagnosticsIsOkForGoodParse) {
+  const auto words = CompileSuccessfully("");
+  EXPECT_HEADER(1).WillOnce(Return(SPV_SUCCESS));
+  EXPECT_CALL(client_, Instruction(_)).Times(0);  // No instruction callback.
+  EXPECT_EQ(
+      SPV_SUCCESS,
+      spvBinaryParse(ScopedContext().context, &client_, words.data(),
+                     words.size(), invoke_header, invoke_instruction, nullptr));
+}
+
+TEST_F(BinaryParseTest, NullDiagnosticsIsOkForBadParse) {
+  auto words = CompileSuccessfully("");
+  words.push_back(0xffffffff);  // Certainly invalid instruction header.
+  EXPECT_HEADER(1).WillOnce(Return(SPV_SUCCESS));
+  EXPECT_CALL(client_, Instruction(_)).Times(0);  // No instruction callback.
+  EXPECT_EQ(
+      SPV_ERROR_INVALID_BINARY,
+      spvBinaryParse(ScopedContext().context, &client_, words.data(),
+                     words.size(), invoke_header, invoke_instruction, nullptr));
+}
+
+// Make sure that we don't blow up when both the consumer and the diagnostic are
+// null.
+TEST_F(BinaryParseTest, NullConsumerNullDiagnosticsForBadParse) {
+  auto words = CompileSuccessfully("");
+
+  auto ctx = spvContextCreate(SPV_ENV_UNIVERSAL_1_1);
+  SetContextMessageConsumer(ctx, nullptr);
+
+  words.push_back(0xffffffff);  // Certainly invalid instruction header.
+  EXPECT_HEADER(1).WillOnce(Return(SPV_SUCCESS));
+  EXPECT_CALL(client_, Instruction(_)).Times(0);  // No instruction callback.
+  EXPECT_EQ(SPV_ERROR_INVALID_BINARY,
+            spvBinaryParse(ctx, &client_, words.data(), words.size(),
+                           invoke_header, invoke_instruction, nullptr));
+
+  spvContextDestroy(ctx);
+}
+
+TEST_F(BinaryParseTest, SpecifyConsumerNullDiagnosticsForGoodParse) {
+  const auto words = CompileSuccessfully("");
+
+  auto ctx = spvContextCreate(SPV_ENV_UNIVERSAL_1_1);
+  int invocation = 0;
+  SetContextMessageConsumer(
+      ctx, [&invocation](spvtools::MessageLevel, const char*,
+                         const spv_position_t&, const char*) { ++invocation; });
+
+  EXPECT_HEADER(1).WillOnce(Return(SPV_SUCCESS));
+  EXPECT_CALL(client_, Instruction(_)).Times(0);  // No instruction callback.
+  EXPECT_EQ(SPV_SUCCESS,
+            spvBinaryParse(ctx, &client_, words.data(), words.size(),
+                           invoke_header, invoke_instruction, nullptr));
+  EXPECT_EQ(0, invocation);
+
+  spvContextDestroy(ctx);
+}
+
+TEST_F(BinaryParseTest, SpecifyConsumerNullDiagnosticsForBadParse) {
+  auto words = CompileSuccessfully("");
+
+  auto ctx = spvContextCreate(SPV_ENV_UNIVERSAL_1_1);
+  int invocation = 0;
+  SetContextMessageConsumer(
+      ctx, [&invocation](spvtools::MessageLevel level, const char* source,
+                         const spv_position_t& position, const char* message) {
+        ++invocation;
+        EXPECT_EQ(spvtools::MessageLevel::Error, level);
+        EXPECT_STREQ("input", source);
+        EXPECT_EQ(0u, position.line);
+        EXPECT_EQ(0u, position.column);
+        EXPECT_EQ(5u, position.index);
+        EXPECT_STREQ("Invalid opcode: 65535", message);
+      });
+
+  words.push_back(0xffffffff);  // Certainly invalid instruction header.
+  EXPECT_HEADER(1).WillOnce(Return(SPV_SUCCESS));
+  EXPECT_CALL(client_, Instruction(_)).Times(0);  // No instruction callback.
+  EXPECT_EQ(SPV_ERROR_INVALID_BINARY,
+            spvBinaryParse(ctx, &client_, words.data(), words.size(),
+                           invoke_header, invoke_instruction, nullptr));
+  EXPECT_EQ(1, invocation);
+
+  spvContextDestroy(ctx);
+}
+
+TEST_F(BinaryParseTest, SpecifyConsumerSpecifyDiagnosticsForGoodParse) {
+  const auto words = CompileSuccessfully("");
+
+  auto ctx = spvContextCreate(SPV_ENV_UNIVERSAL_1_1);
+  int invocation = 0;
+  SetContextMessageConsumer(
+      ctx, [&invocation](spvtools::MessageLevel, const char*,
+                         const spv_position_t&, const char*) { ++invocation; });
+
+  EXPECT_HEADER(1).WillOnce(Return(SPV_SUCCESS));
+  EXPECT_CALL(client_, Instruction(_)).Times(0);  // No instruction callback.
+  EXPECT_EQ(SPV_SUCCESS,
+            spvBinaryParse(ctx, &client_, words.data(), words.size(),
+                           invoke_header, invoke_instruction, &diagnostic_));
+  EXPECT_EQ(0, invocation);
+  EXPECT_EQ(nullptr, diagnostic_);
+
+  spvContextDestroy(ctx);
+}
+
+TEST_F(BinaryParseTest, SpecifyConsumerSpecifyDiagnosticsForBadParse) {
+  auto words = CompileSuccessfully("");
+
+  auto ctx = spvContextCreate(SPV_ENV_UNIVERSAL_1_1);
+  int invocation = 0;
+  SetContextMessageConsumer(
+      ctx, [&invocation](spvtools::MessageLevel, const char*,
+                         const spv_position_t&, const char*) { ++invocation; });
+
+  words.push_back(0xffffffff);  // Certainly invalid instruction header.
+  EXPECT_HEADER(1).WillOnce(Return(SPV_SUCCESS));
+  EXPECT_CALL(client_, Instruction(_)).Times(0);  // No instruction callback.
+  EXPECT_EQ(SPV_ERROR_INVALID_BINARY,
+            spvBinaryParse(ctx, &client_, words.data(), words.size(),
+                           invoke_header, invoke_instruction, &diagnostic_));
+  EXPECT_EQ(0, invocation);
+  EXPECT_STREQ("Invalid opcode: 65535", diagnostic_->error);
+
+  spvContextDestroy(ctx);
 }
 
 TEST_F(BinaryParseTest,

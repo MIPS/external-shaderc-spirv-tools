@@ -1,28 +1,16 @@
 // Copyright (c) 2015-2016 The Khronos Group Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Validation tests for Logical Layout
 
@@ -117,6 +105,8 @@ using ValidateCapabilityV11 = spvtest::ValidateBase<CapTestParameter>;
 // Always assembles using Vulkan 1.0.
 // TODO(dneto): Refactor all these tests to scale better across environments.
 using ValidateCapabilityVulkan10 = spvtest::ValidateBase<CapTestParameter>;
+// Always assembles using OpenGL 4.0.
+using ValidateCapabilityOpenGL40 = spvtest::ValidateBase<CapTestParameter>;
 
 TEST_F(ValidateCapability, Default) {
   const char str[] = R"(
@@ -925,15 +915,18 @@ INSTANTIATE_TEST_CASE_P(BuiltIn, ValidateCapability,
 make_pair(string(kOpenCLMemoryModel) +
           "OpDecorate %intt BuiltIn Position\n"
           "%intt = OpTypeInt 32 1\n", ShaderDependencies()),
+// Just mentioning PointSize, ClipDistance, or CullDistance as a BuiltIn does
+// not trigger the requirement for the associated capability.
+// See https://github.com/KhronosGroup/SPIRV-Tools/issues/365
 make_pair(string(kOpenCLMemoryModel) +
           "OpDecorate %intt BuiltIn PointSize\n"
-          "%intt = OpTypeInt 32 1\n", ShaderDependencies()),
+          "%intt = OpTypeInt 32 1\n", AllCapabilities()),
 make_pair(string(kOpenCLMemoryModel) +
           "OpDecorate %intt BuiltIn ClipDistance\n"
-          "%intt = OpTypeInt 32 1\n", vector<string>{"ClipDistance"}),
+          "%intt = OpTypeInt 32 1\n", AllCapabilities()),
 make_pair(string(kOpenCLMemoryModel) +
           "OpDecorate %intt BuiltIn CullDistance\n"
-          "%intt = OpTypeInt 32 1\n", vector<string>{"CullDistance"}),
+          "%intt = OpTypeInt 32 1\n", AllCapabilities()),
 make_pair(string(kOpenCLMemoryModel) +
           "OpDecorate %intt BuiltIn VertexId\n"
           "%intt = OpTypeInt 32 1\n", ShaderDependencies()),
@@ -1053,15 +1046,34 @@ make_pair(string(kOpenCLMemoryModel) +
           "%intt = OpTypeInt 32 1\n", ShaderDependencies())
 )),);
 
-// There's disagreement about whether mere mention of ClipDistance and
-// CullDistance implies a requirement to declare their associated capabilities.
-// Until the dust settles, turn off those checks.
-// See https://github.com/KhronosGroup/SPIRV-Tools/issues/261
+// Ensure that mere mention of PointSize, ClipDistance, or CullDistance as
+// BuiltIns does not trigger the requirement for the associated
+// capability.
+// See https://github.com/KhronosGroup/SPIRV-Tools/issues/365
 INSTANTIATE_TEST_CASE_P(BuiltIn, ValidateCapabilityVulkan10,
                         Combine(
                             // Vulkan 1.0 is based on SPIR-V 1.0
                             ValuesIn(AllV10Capabilities()),
                             Values(
+make_pair(string(kGLSL450MemoryModel) +
+          "OpDecorate %intt BuiltIn PointSize\n"
+          "%intt = OpTypeInt 32 1\n", AllV10Capabilities()),
+make_pair(string(kGLSL450MemoryModel) +
+          "OpDecorate %intt BuiltIn ClipDistance\n"
+          "%intt = OpTypeInt 32 1\n", AllV10Capabilities()),
+make_pair(string(kGLSL450MemoryModel) +
+          "OpDecorate %intt BuiltIn CullDistance\n"
+          "%intt = OpTypeInt 32 1\n", AllV10Capabilities())
+)),);
+
+INSTANTIATE_TEST_CASE_P(BuiltIn, ValidateCapabilityOpenGL40,
+                        Combine(
+                            // OpenGL 4.0 is based on SPIR-V 1.0
+                            ValuesIn(AllV10Capabilities()),
+                            Values(
+make_pair(string(kGLSL450MemoryModel) +
+          "OpDecorate %intt BuiltIn PointSize\n"
+          "%intt = OpTypeInt 32 1\n", AllV10Capabilities()),
 make_pair(string(kGLSL450MemoryModel) +
           "OpDecorate %intt BuiltIn ClipDistance\n"
           "%intt = OpTypeInt 32 1\n", AllV10Capabilities()),
@@ -1168,10 +1180,17 @@ TEST_P(ValidateCapabilityV11, Capability) {
 
 TEST_P(ValidateCapabilityVulkan10, Capability) {
   const string test_code = MakeAssembly(GetParam());
-  std::cout << test_code << std::endl;
   CompileSuccessfully(test_code, SPV_ENV_VULKAN_1_0);
   ASSERT_EQ(ExpectedResult(GetParam()),
             ValidateInstructions(SPV_ENV_VULKAN_1_0))
+      << test_code;
+}
+
+TEST_P(ValidateCapabilityOpenGL40, Capability) {
+  const string test_code = MakeAssembly(GetParam());
+  CompileSuccessfully(test_code, SPV_ENV_OPENGL_4_0);
+  ASSERT_EQ(ExpectedResult(GetParam()),
+            ValidateInstructions(SPV_ENV_OPENGL_4_0))
       << test_code;
 }
 

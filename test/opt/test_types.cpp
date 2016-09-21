@@ -1,39 +1,29 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include "source/opt/types.h"
+#include "opt/make_unique.h"
+#include "opt/types.h"
 
 namespace {
 
 using namespace spvtools::opt::analysis;
+using spvtools::MakeUnique;
 
 // Fixture class providing some element types.
 class SameTypeTest : public ::testing::Test {
@@ -215,6 +205,56 @@ TEST(Types, AllTypes) {
             << types[j]->str() << "'";
       }
     }
+  }
+}
+
+TEST(Types, IntSignedness) {
+  std::vector<bool> signednesses = {true, false, false, true};
+  std::vector<std::unique_ptr<Integer>> types;
+  for (bool s : signednesses) {
+    types.emplace_back(new Integer(32, s));
+  }
+  for (size_t i = 0; i < signednesses.size(); i++) {
+    EXPECT_EQ(signednesses[i], types[i]->IsSigned());
+  }
+}
+
+TEST(Types, IntWidth) {
+  std::vector<uint32_t> widths = {1, 2, 4, 8, 16, 32, 48, 64, 128};
+  std::vector<std::unique_ptr<Integer>> types;
+  for (uint32_t w : widths) {
+    types.emplace_back(new Integer(w, true));
+  }
+  for (size_t i = 0; i < widths.size(); i++) {
+    EXPECT_EQ(widths[i], types[i]->width());
+  }
+}
+
+TEST(Types, FloatWidth) {
+  std::vector<uint32_t> widths = {1, 2, 4, 8, 16, 32, 48, 64, 128};
+  std::vector<std::unique_ptr<Float>> types;
+  for (uint32_t w : widths) {
+    types.emplace_back(new Float(w));
+  }
+  for (size_t i = 0; i < widths.size(); i++) {
+    EXPECT_EQ(widths[i], types[i]->width());
+  }
+}
+
+TEST(Types, VectorElementCount) {
+  auto s32 = MakeUnique<Integer>(32, true);
+  for (uint32_t c : {2, 3, 4}) {
+    auto s32v = MakeUnique<Vector>(s32.get(), c);
+    EXPECT_EQ(c, s32v->element_count());
+  }
+}
+
+TEST(Types, MatrixElementCount) {
+  auto s32 = MakeUnique<Integer>(32, true);
+  auto s32v4 = MakeUnique<Vector>(s32.get(), 4);
+  for (uint32_t c : {1, 2, 3, 4, 10, 100}) {
+    auto s32m = MakeUnique<Matrix>(s32v4.get(), c);
+    EXPECT_EQ(c, s32m->element_count());
   }
 }
 

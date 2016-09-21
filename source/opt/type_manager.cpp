@@ -1,32 +1,20 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <algorithm>
-#include <cassert>
 
+#include "log.h"
 #include "reflect.h"
 #include "type_manager.h"
 
@@ -173,16 +161,17 @@ Type* TypeManager::RecordIfTypeDefinition(
       type = new NamedBarrier();
       break;
     default:
-      assert(0 && "unhandled type found");
+      SPIRV_UNIMPLEMENTED(consumer_, "unhandled type");
       break;
   }
 
   uint32_t id = inst.result_id();
   if (id == 0) {
-    assert(inst.opcode() == SpvOpTypeForwardPointer &&
-           "instruction without result id found");
+    SPIRV_ASSERT(consumer_, inst.opcode() == SpvOpTypeForwardPointer,
+                 "instruction without result id found");
   } else {
-    assert(type != nullptr && "type should not be nullptr at this point");
+    SPIRV_ASSERT(consumer_, type != nullptr,
+                 "type should not be nullptr at this point");
     id_to_type_[id].reset(type);
     type_to_id_[type] = id;
   }
@@ -216,16 +205,16 @@ void TypeManager::AttachIfTypeDecoration(const ir::Instruction& inst) {
       if (Struct* st = target_type->AsStruct()) {
         st->AddMemeberDecoration(index, std::move(data));
       } else {
-        assert(0 && "OpMemberDecorate on non-struct type");
+        SPIRV_UNIMPLEMENTED(consumer_, "OpMemberDecorate non-struct type");
       }
     } break;
     case SpvOpDecorationGroup:
     case SpvOpGroupDecorate:
     case SpvOpGroupMemberDecorate:
-      assert(0 && "unhandled decoration");
+      SPIRV_UNIMPLEMENTED(consumer_, "unhandled decoration");
       break;
     default:
-      assert(0 && "unreachable");
+      SPIRV_UNREACHABLE(consumer_);
       break;
   }
 }

@@ -1,112 +1,73 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "libspirv.hpp"
 
 #include "ir_loader.h"
+#include "make_unique.h"
+#include "message.h"
+#include "table.h"
 
 namespace spvtools {
 
-namespace {
+// Structs for holding the data members for SpvTools.
+struct SpvTools::Impl {
+  explicit Impl(spv_target_env env) : context(spvContextCreate(env)) {
+    // The default consumer in spv_context_t is a null consumer, which provides
+    // equivalent functionality (from the user's perspective) as a real consumer
+    // does nothing.
+  }
+  ~Impl() { spvContextDestroy(context); }
 
-// Sets the module header. Meets the interface requirement of spvBinaryParse().
-spv_result_t SetSpvHeader(void* builder, spv_endianness_t, uint32_t magic,
-                          uint32_t version, uint32_t generator,
-                          uint32_t id_bound, uint32_t reserved) {
-  reinterpret_cast<ir::IrLoader*>(builder)->SetModuleHeader(
-      magic, version, generator, id_bound, reserved);
-  return SPV_SUCCESS;
+  spv_context context;  // C interface context object.
 };
 
-// Processes a parsed instruction. Meets the interface requirement of
-// spvBinaryParse().
-spv_result_t SetSpvInst(void* builder, const spv_parsed_instruction_t* inst) {
-  reinterpret_cast<ir::IrLoader*>(builder)->AddInstruction(inst);
-  return SPV_SUCCESS;
-};
+SpvTools::SpvTools(spv_target_env env) : impl_(new Impl(env)) {}
 
-}  // annoymous namespace
+SpvTools::~SpvTools() {}
 
-spv_result_t SpvTools::Assemble(const std::string& text,
-                                std::vector<uint32_t>* binary) {
+void SpvTools::SetMessageConsumer(MessageConsumer consumer) {
+  SetContextMessageConsumer(impl_->context, std::move(consumer));
+}
+
+bool SpvTools::Assemble(const std::string& text,
+                        std::vector<uint32_t>* binary) const {
   spv_binary spvbinary = nullptr;
-  spv_diagnostic diagnostic = nullptr;
-
-  spv_result_t status = spvTextToBinary(context_, text.data(), text.size(),
-                                        &spvbinary, &diagnostic);
+  spv_result_t status = spvTextToBinary(impl_->context, text.data(),
+                                        text.size(), &spvbinary, nullptr);
   if (status == SPV_SUCCESS) {
     binary->assign(spvbinary->code, spvbinary->code + spvbinary->wordCount);
   }
-
-  spvDiagnosticDestroy(diagnostic);
   spvBinaryDestroy(spvbinary);
-
-  return status;
+  return status == SPV_SUCCESS;
 }
 
-spv_result_t SpvTools::Disassemble(const std::vector<uint32_t>& binary,
-                                   std::string* text, uint32_t options) {
+bool SpvTools::Disassemble(const std::vector<uint32_t>& binary,
+                           std::string* text, uint32_t options) const {
   spv_text spvtext = nullptr;
-  spv_diagnostic diagnostic = nullptr;
-
-  spv_result_t status = spvBinaryToText(context_, binary.data(), binary.size(),
-                                        options, &spvtext, &diagnostic);
+  spv_result_t status = spvBinaryToText(
+      impl_->context, binary.data(), binary.size(), options, &spvtext, nullptr);
   if (status == SPV_SUCCESS) {
     text->assign(spvtext->str, spvtext->str + spvtext->length);
   }
-
-  spvDiagnosticDestroy(diagnostic);
   spvTextDestroy(spvtext);
-
-  return status;
+  return status == SPV_SUCCESS;
 }
 
-std::unique_ptr<ir::Module> SpvTools::BuildModule(
-    const std::vector<uint32_t>& binary) {
-  spv_diagnostic diagnostic = nullptr;
-
-  std::unique_ptr<ir::Module> module(new ir::Module);
-  ir::IrLoader loader(module.get());
-
-  spv_result_t status =
-      spvBinaryParse(context_, &loader, binary.data(), binary.size(),
-                     SetSpvHeader, SetSpvInst, &diagnostic);
-
-  spvDiagnosticDestroy(diagnostic);
-
-  loader.EndModule();
-
-  if (status == SPV_SUCCESS) return module;
-  return nullptr;
-}
-
-std::unique_ptr<ir::Module> SpvTools::BuildModule(const std::string& text) {
-  std::vector<uint32_t> binary;
-  if (Assemble(text, &binary) != SPV_SUCCESS) return nullptr;
-  return BuildModule(binary);
+bool SpvTools::Validate(const std::vector<uint32_t>& binary) const {
+  spv_const_binary_t b = {binary.data(), binary.size()};
+  return spvValidate(impl_->context, &b, nullptr) == SPV_SUCCESS;
 }
 
 }  // namespace spvtools

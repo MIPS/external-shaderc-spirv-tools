@@ -1,28 +1,16 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef LIBSPIRV_OPT_TYPE_MANAGER_H_
 #define LIBSPIRV_OPT_TYPE_MANAGER_H_
@@ -31,6 +19,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "message.h"
 #include "module.h"
 #include "types.h"
 
@@ -45,7 +34,13 @@ class TypeManager {
   using TypeToIdMap = std::unordered_map<const Type*, uint32_t>;
   using ForwardPointerVector = std::vector<std::unique_ptr<ForwardPointer>>;
 
-  inline explicit TypeManager(const spvtools::ir::Module& module);
+  // Constructs a type manager from the given |module|. All internal messages
+  // will be communicated to the outside via the given message |consumer|.
+  // This instance only keeps a reference to the |consumer|, so the |consumer|
+  // should outlive this instance.
+  TypeManager(const MessageConsumer& consumer,
+              const spvtools::ir::Module& module);
+
   TypeManager(const TypeManager&) = delete;
   TypeManager(TypeManager&&) = delete;
   TypeManager& operator=(const TypeManager&) = delete;
@@ -76,6 +71,7 @@ class TypeManager {
   // given instruction is not a decoration instruction or not decorating a type.
   void AttachIfTypeDecoration(const spvtools::ir::Instruction& inst);
 
+  const MessageConsumer& consumer_;  // Message consumer.
   IdToTypeMap id_to_type_;  // Mapping from ids to their type representations.
   TypeToIdMap type_to_id_;  // Mapping from types to their defining ids.
   ForwardPointerVector forward_pointers_;  // All forward pointer declarations.
@@ -84,7 +80,9 @@ class TypeManager {
   std::unordered_set<ForwardPointer*> unresolved_forward_pointers_;
 };
 
-inline TypeManager::TypeManager(const spvtools::ir::Module& module) {
+inline TypeManager::TypeManager(const spvtools::MessageConsumer& consumer,
+                                const spvtools::ir::Module& module)
+    : consumer_(consumer) {
   AnalyzeTypes(module);
 }
 

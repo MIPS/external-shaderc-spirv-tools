@@ -1,34 +1,24 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <memory>
+#include <unordered_set>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "opt/build_module.h"
 #include "opt/def_use_manager.h"
 #include "opt/libspirv.hpp"
 #include "pass_utils.h"
@@ -47,7 +37,7 @@ std::string DisassembleInst(ir::Instruction* inst) {
   std::vector<uint32_t> binary;
   // We need this to generate the necessary header in the binary.
   tools.Assemble("", &binary);
-  inst->ToBinary(&binary, /* skip_nop = */ false);
+  inst->ToBinaryWithoutAttachedDebugInsts(&binary);
 
   std::string text;
   // We'll need to check the underlying id numbers.
@@ -139,11 +129,11 @@ TEST_P(ParseDefUseTest, Case) {
   // Build module.
   const std::vector<const char*> text = {tc.text};
   std::unique_ptr<ir::Module> module =
-      SpvTools(SPV_ENV_UNIVERSAL_1_1).BuildModule(JoinAllInsts(text));
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, JoinAllInsts(text));
   ASSERT_NE(nullptr, module);
 
   // Analyze def and use.
-  opt::analysis::DefUseManager manager(module.get());
+  opt::analysis::DefUseManager manager(IgnoreMessage, module.get());
 
   CheckDef(tc.du, manager.id_to_defs());
   CheckUse(tc.du, manager.id_to_uses());
@@ -520,11 +510,11 @@ TEST_P(ReplaceUseTest, Case) {
   // Build module.
   const std::vector<const char*> text = {tc.before};
   std::unique_ptr<ir::Module> module =
-      SpvTools(SPV_ENV_UNIVERSAL_1_1).BuildModule(JoinAllInsts(text));
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, JoinAllInsts(text));
   ASSERT_NE(nullptr, module);
 
   // Analyze def and use.
-  opt::analysis::DefUseManager manager(module.get());
+  opt::analysis::DefUseManager manager(IgnoreMessage, module.get());
 
   // Do the substitution.
   for (const auto& candiate : tc.candidates) {
@@ -822,11 +812,11 @@ TEST_P(KillDefTest, Case) {
   // Build module.
   const std::vector<const char*> text = {tc.before};
   std::unique_ptr<ir::Module> module =
-      SpvTools(SPV_ENV_UNIVERSAL_1_1).BuildModule(JoinAllInsts(text));
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, JoinAllInsts(text));
   ASSERT_NE(nullptr, module);
 
   // Analyze def and use.
-  opt::analysis::DefUseManager manager(module.get());
+  opt::analysis::DefUseManager manager(IgnoreMessage, module.get());
 
   // Do the substitution.
   for (const auto id : tc.ids_to_kill) manager.KillDef(id);
@@ -1072,11 +1062,11 @@ TEST(DefUseTest, OpSwitch) {
       "      OpFunctionEnd";
 
   std::unique_ptr<ir::Module> module =
-      SpvTools(SPV_ENV_UNIVERSAL_1_1).BuildModule(original_text);
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, original_text);
   ASSERT_NE(nullptr, module);
 
   // Analyze def and use.
-  opt::analysis::DefUseManager manager(module.get());
+  opt::analysis::DefUseManager manager(IgnoreMessage, module.get());
 
   // Do a bunch replacements.
   manager.ReplaceAllUsesWith(9, 900);    // to unused id
@@ -1151,4 +1141,381 @@ TEST(DefUseTest, OpSwitch) {
   }
 }
 
+// Creates an |result_id| = OpTypeInt 32 1 instruction.
+ir::Instruction Int32TypeInstruction(uint32_t result_id) {
+  return ir::Instruction(SpvOp::SpvOpTypeInt, 0, result_id,
+                         {ir::Operand(SPV_OPERAND_TYPE_LITERAL_INTEGER, {32}),
+                          ir::Operand(SPV_OPERAND_TYPE_LITERAL_INTEGER, {1})});
+}
+
+// Creates an |result_id| = OpConstantTrue/Flase |type_id| instruction.
+ir::Instruction ConstantBoolInstruction(bool value, uint32_t type_id,
+                                        uint32_t result_id) {
+  return ir::Instruction(
+      value ? SpvOp::SpvOpConstantTrue : SpvOp::SpvOpConstantFalse, type_id,
+      result_id, {});
+}
+
+// Creates an |result_id| = OpLabel instruction.
+ir::Instruction LabelInstruction(uint32_t result_id) {
+  return ir::Instruction(SpvOp::SpvOpLabel, 0, result_id, {});
+}
+
+// Creates an OpBranch |target_id| instruction.
+ir::Instruction BranchInstruction(uint32_t target_id) {
+  return ir::Instruction(SpvOp::SpvOpBranch, 0, 0,
+                         {
+                             ir::Operand(SPV_OPERAND_TYPE_ID, {target_id}),
+                         });
+}
+
+// Test case for analyzing individual instructions.
+struct AnalyzeInstDefUseTestCase {
+  std::vector<ir::Instruction> insts;  // instrutions to be analyzed in order.
+  const char* module_text;
+  InstDefUse expected_define_use;
+};
+
+using AnalyzeInstDefUseTest =
+    ::testing::TestWithParam<AnalyzeInstDefUseTestCase>;
+
+// Test the analyzing result for individual instructions.
+TEST_P(AnalyzeInstDefUseTest, Case) {
+  auto tc = GetParam();
+
+  // Build module.
+  std::unique_ptr<ir::Module> module =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, tc.module_text);
+  ASSERT_NE(nullptr, module);
+
+  // Analyze the instructions.
+  opt::analysis::DefUseManager manager(IgnoreMessage, module.get());
+  for (ir::Instruction& inst : tc.insts) {
+    manager.AnalyzeInstDefUse(&inst);
+  }
+
+  CheckDef(tc.expected_define_use, manager.id_to_defs());
+  CheckUse(tc.expected_define_use, manager.id_to_uses());
+}
+
+// clang-format off
+INSTANTIATE_TEST_CASE_P(
+    TestCase, AnalyzeInstDefUseTest,
+    ::testing::ValuesIn(std::vector<AnalyzeInstDefUseTestCase>{
+      { // A type declaring instruction.
+        {Int32TypeInstruction(1)},
+        "",
+        {
+          // defs
+          {{1, "%1 = OpTypeInt 32 1"}},
+          {}, // no uses
+        },
+      },
+      { // A type declaring instruction and a constant value.
+        {
+          Int32TypeInstruction(1),
+          ConstantBoolInstruction(true, 1, 2),
+        },
+        "",
+        {
+          { // defs
+            {1, "%1 = OpTypeInt 32 1"},
+            {2, "%2 = OpConstantTrue %1"}, // It is fine the SPIR-V code here is invalid.
+          },
+          { // uses
+            {1, {"%2 = OpConstantTrue %1"}},
+          },
+        },
+      },
+      { // Analyze two instrutions that have same result id. The def use info
+        // of the result id from the first instruction should be overwritten by
+        // the second instruction.
+        {
+          ConstantBoolInstruction(true, 1, 2),
+          // The def-use info of the following instruction should overwrite the
+          // records of the above one.
+          ConstantBoolInstruction(false, 3, 2),
+        },
+        "",
+        {
+          // defs
+          {{2, "%2 = OpConstantFalse %3"}},
+          // uses
+          {{3, {"%2 = OpConstantFalse %3"}}}
+        }
+      },
+      { // Analyze forward reference instruction, also instruction that does
+        // not have result id.
+        {
+          BranchInstruction(2),
+          LabelInstruction(2),
+        },
+        "",
+        {
+          // defs
+          {{2, "%2 = OpLabel"}},
+          // uses
+          {{2, {"OpBranch %2"}}},
+        }
+      },
+      { // Analyzing an additional instruction with new result id to an
+        // existing module.
+        {
+          ConstantBoolInstruction(true, 1, 2),
+        },
+        "%1 = OpTypeInt 32 1 ",
+        {
+          { // defs
+            {1, "%1 = OpTypeInt 32 1"},
+            {2, "%2 = OpConstantTrue %1"},
+          },
+          { // uses
+            {1, {"%2 = OpConstantTrue %1"}},
+          },
+        }
+      },
+      { // Analyzing an additional instruction with existing result id to an
+        // existing module.
+        {
+          ConstantBoolInstruction(true, 1, 2),
+        },
+        "%1 = OpTypeInt 32 1 "
+        "%2 = OpTypeBool ",
+        {
+          { // defs
+            {1, "%1 = OpTypeInt 32 1"},
+            {2, "%2 = OpConstantTrue %1"},
+          },
+          { // uses
+            {1, {"%2 = OpConstantTrue %1"}},
+          },
+        }
+      },
+      }));
+// clang-format on
+
+struct KillInstTestCase {
+  const char* before;
+  std::unordered_set<uint32_t> indices_for_inst_to_kill;
+  const char* after;
+  InstDefUse expected_define_use;
+};
+
+using KillInstTest = ::testing::TestWithParam<KillInstTestCase>;
+
+TEST_P(KillInstTest, Case) {
+  auto tc = GetParam();
+
+  // Build module.
+  std::unique_ptr<ir::Module> module =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, tc.before);
+  ASSERT_NE(nullptr, module);
+
+  // KillInst
+  uint32_t index = 0;
+  opt::analysis::DefUseManager manager(IgnoreMessage, module.get());
+  module->ForEachInst([&index, &tc, &manager](ir::Instruction* inst) {
+    if (tc.indices_for_inst_to_kill.count(index) != 0) {
+      manager.KillInst(inst);
+    }
+    index++;
+  });
+
+  EXPECT_EQ(tc.after, DisassembleModule(module.get()));
+  CheckDef(tc.expected_define_use, manager.id_to_defs());
+  CheckUse(tc.expected_define_use, manager.id_to_uses());
+}
+
+// clang-format off
+INSTANTIATE_TEST_CASE_P(
+    TestCase, KillInstTest,
+    ::testing::ValuesIn(std::vector<KillInstTestCase>{
+      // Kill id defining instructions.
+      {
+        "%2 = OpFunction %1 None %3 "
+        "%4 = OpLabel "
+        "     OpBranch %5 "
+        "%5 = OpLabel "
+        "     OpBranch %6 "
+        "%6 = OpLabel "
+        "     OpBranch %4 "
+        "%7 = OpLabel "
+        "     OpReturn "
+        "     OpFunctionEnd",
+        {0, 3, 5, 7},
+        "OpNop\n"
+        "%4 = OpLabel\n"
+        "OpBranch %5\n"
+        "OpNop\n"
+        "OpBranch %6\n"
+        "OpNop\n"
+        "OpBranch %4\n"
+        "OpNop\n"
+        "OpReturn\n"
+        "OpFunctionEnd",
+        {
+          // defs
+          {{4, "%4 = OpLabel"}},
+          // uses
+          {{4, {"OpBranch %4"}}}
+        }
+      },
+      // Kill instructions that do not have result ids.
+      {
+        "%2 = OpFunction %1 None %3 "
+        "%4 = OpLabel "
+        "     OpBranch %5 "
+        "%5 = OpLabel "
+        "     OpBranch %6 "
+        "%6 = OpLabel "
+        "     OpBranch %4 "
+        "%7 = OpLabel "
+        "     OpReturn "
+        "     OpFunctionEnd",
+        {2, 4},
+        "%2 = OpFunction %1 None %3\n"
+        "%4 = OpLabel\n"
+             "OpNop\n"
+        "%5 = OpLabel\n"
+             "OpNop\n"
+        "%6 = OpLabel\n"
+             "OpBranch %4\n"
+        "%7 = OpLabel\n"
+             "OpReturn\n"
+             "OpFunctionEnd",
+        {
+          // defs
+          {
+            {2, "%2 = OpFunction %1 None %3"},
+            {4, "%4 = OpLabel"},
+            {5, "%5 = OpLabel"},
+            {6, "%6 = OpLabel"},
+            {7, "%7 = OpLabel"},
+          },
+          // uses
+          {
+            {1, {"%2 = OpFunction %1 None %3"}},
+            {3, {"%2 = OpFunction %1 None %3"}},
+            {4, {"OpBranch %4"}},
+          }
+        }
+      },
+      }));
+// clang-format on
+
+struct GetAnnotationsTestCase {
+  const char* code;
+  uint32_t id;
+  std::vector<std::string> annotations;
+};
+
+using GetAnnotationsTest = ::testing::TestWithParam<GetAnnotationsTestCase>;
+
+TEST_P(GetAnnotationsTest, Case) {
+  const GetAnnotationsTestCase& tc = GetParam();
+
+  // Build module.
+  std::unique_ptr<ir::Module> module =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, tc.code);
+  ASSERT_NE(nullptr, module);
+
+  // Get annotations
+  opt::analysis::DefUseManager manager(IgnoreMessage, module.get());
+  auto insts = manager.GetAnnotations(tc.id);
+
+  // Check
+  ASSERT_EQ(tc.annotations.size(), insts.size())
+      << "wrong number of annotation instructions";
+  auto inst_iter = insts.begin();
+  for (const std::string& expected_anno_inst : tc.annotations) {
+    EXPECT_EQ(expected_anno_inst, DisassembleInst(*inst_iter))
+        << "annotation instruction mismatch";
+    inst_iter++;
+  }
+}
+
+// clang-format off
+INSTANTIATE_TEST_CASE_P(
+    TestCase, GetAnnotationsTest,
+    ::testing::ValuesIn(std::vector<GetAnnotationsTestCase>{
+      // empty
+      {"", 0, {}},
+      // basic
+      {
+        // code
+        "OpDecorate %1 Block "
+        "OpDecorate %1 RelaxedPrecision "
+        "%3 = OpTypeInt 32 0 "
+        "%1 = OpTypeStruct %3",
+        // id
+        1,
+        // annotations
+        {
+          "OpDecorate %1 Block",
+          "OpDecorate %1 RelaxedPrecision",
+        },
+      },
+      // with debug instructions
+      {
+        // code
+        "OpName %1 \"struct_type\" "
+        "OpName %3 \"int_type\" "
+        "OpDecorate %1 Block "
+        "OpDecorate %1 RelaxedPrecision "
+        "%3 = OpTypeInt 32 0 "
+        "%1 = OpTypeStruct %3",
+        // id
+        1,
+        // annotations
+        {
+          "OpDecorate %1 Block",
+          "OpDecorate %1 RelaxedPrecision",
+        },
+      },
+      // no annotations
+      {
+        // code
+        "OpName %1 \"struct_type\" "
+        "OpName %3 \"int_type\" "
+        "OpDecorate %1 Block "
+        "OpDecorate %1 RelaxedPrecision "
+        "%3 = OpTypeInt 32 0 "
+        "%1 = OpTypeStruct %3",
+        // id
+        3,
+        // annotations
+        {},
+      },
+      // decoration group
+      {
+        // code
+        "OpDecorate %1 Block "
+        "OpDecorate %1 RelaxedPrecision "
+        "%1 = OpDecorationGroup "
+        "OpGroupDecorate %1 %2 %3 "
+        "%4 = OpTypeInt 32 0 "
+        "%2 = OpTypeStruct %4 "
+        "%3 = OpTypeStruct %4 %4",
+        // id
+        3,
+        // annotations
+        {
+          "OpGroupDecorate %1 %2 %3",
+        },
+      },
+      // memeber decorate
+      {
+        // code
+        "OpMemberDecorate %1 0 RelaxedPrecision "
+        "%2 = OpTypeInt 32 0 "
+        "%1 = OpTypeStruct %2 %2",
+        // id
+        1,
+        // annotations
+        {
+          "OpMemberDecorate %1 0 RelaxedPrecision",
+        },
+      },
+      }));
+// clang-format on
 }  // anonymous namespace

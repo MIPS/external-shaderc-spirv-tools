@@ -1,28 +1,16 @@
 // Copyright (c) 2015-2016 The Khronos Group Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <sstream>
 #include <string>
@@ -627,6 +615,15 @@ TEST_F(ValidateID, OpConstantCompositeVectorGood) {
 %4 = OpConstantComposite %2 %3 %3 %3 %3)";
   CHECK(spirv, SPV_SUCCESS);
 }
+TEST_F(ValidateID, OpConstantCompositeVectorWithUndefGood) {
+  const char* spirv = R"(
+%1 = OpTypeFloat 32
+%2 = OpTypeVector %1 4
+%3 = OpConstant %1 3.14
+%9 = OpUndef %1
+%4 = OpConstantComposite %2 %3 %3 %3 %9)";
+  CHECK(spirv, SPV_SUCCESS);
+}
 TEST_F(ValidateID, OpConstantCompositeVectorResultTypeBad) {
   const char* spirv = R"(
 %1 = OpTypeFloat 32
@@ -635,13 +632,23 @@ TEST_F(ValidateID, OpConstantCompositeVectorResultTypeBad) {
 %4 = OpConstantComposite %1 %3 %3 %3 %3)";
   CHECK(spirv, SPV_ERROR_INVALID_ID);
 }
-TEST_F(ValidateID, OpConstantCompositeVectorConstituentBad) {
+TEST_F(ValidateID, OpConstantCompositeVectorConstituentTypeBad) {
   const char* spirv = R"(
 %1 = OpTypeFloat 32
 %2 = OpTypeVector %1 4
 %4 = OpTypeInt 32 0
 %3 = OpConstant %1 3.14
-%5 = OpConstant %4 42
+%5 = OpConstant %4 42 ; bad type for constant value
+%6 = OpConstantComposite %2 %3 %5 %3 %3)";
+  CHECK(spirv, SPV_ERROR_INVALID_ID);
+}
+TEST_F(ValidateID, OpConstantCompositeVectorConstituentUndefTypeBad) {
+  const char* spirv = R"(
+%1 = OpTypeFloat 32
+%2 = OpTypeVector %1 4
+%4 = OpTypeInt 32 0
+%3 = OpConstant %1 3.14
+%5 = OpUndef %4 ; bad type for undef value
 %6 = OpConstantComposite %2 %3 %5 %3 %3)";
   CHECK(spirv, SPV_ERROR_INVALID_ID);
 }
@@ -659,7 +666,21 @@ TEST_F(ValidateID, OpConstantCompositeMatrixGood) {
 %10 = OpConstantComposite %3 %6 %7 %8 %9)";
   CHECK(spirv, SPV_SUCCESS);
 }
-TEST_F(ValidateID, OpConstantCompositeMatrixConstituentBad) {
+TEST_F(ValidateID, OpConstantCompositeMatrixUndefGood) {
+  const char* spirv = R"(
+ %1 = OpTypeFloat 32
+ %2 = OpTypeVector %1 4
+ %3 = OpTypeMatrix %2 4
+ %4 = OpConstant %1 1.0
+ %5 = OpConstant %1 0.0
+ %6 = OpConstantComposite %2 %4 %5 %5 %5
+ %7 = OpConstantComposite %2 %5 %4 %5 %5
+ %8 = OpConstantComposite %2 %5 %5 %4 %5
+ %9 = OpUndef %2
+%10 = OpConstantComposite %3 %6 %7 %8 %9)";
+  CHECK(spirv, SPV_SUCCESS);
+}
+TEST_F(ValidateID, OpConstantCompositeMatrixConstituentTypeBad) {
   const char* spirv = R"(
  %1 = OpTypeFloat 32
  %2 = OpTypeVector %1 4
@@ -671,6 +692,21 @@ TEST_F(ValidateID, OpConstantCompositeMatrixConstituentBad) {
  %7 = OpConstantComposite %2 %5 %4 %5 %5
  %8 = OpConstantComposite %2 %5 %5 %4 %5
  %9 = OpConstantComposite %11 %5 %5 %5
+%10 = OpConstantComposite %3 %6 %7 %8 %9)";
+  CHECK(spirv, SPV_ERROR_INVALID_ID);
+}
+TEST_F(ValidateID, OpConstantCompositeMatrixConstituentUndefTypeBad) {
+  const char* spirv = R"(
+ %1 = OpTypeFloat 32
+ %2 = OpTypeVector %1 4
+%11 = OpTypeVector %1 3
+ %3 = OpTypeMatrix %2 4
+ %4 = OpConstant %1 1.0
+ %5 = OpConstant %1 0.0
+ %6 = OpConstantComposite %2 %4 %5 %5 %5
+ %7 = OpConstantComposite %2 %5 %4 %5 %5
+ %8 = OpConstantComposite %2 %5 %5 %4 %5
+ %9 = OpUndef %11
 %10 = OpConstantComposite %3 %6 %7 %8 %9)";
   CHECK(spirv, SPV_ERROR_INVALID_ID);
 }
@@ -696,21 +732,40 @@ TEST_F(ValidateID, OpConstantCompositeArrayGood) {
 %4 = OpConstantComposite %3 %2 %2 %2 %2)";
   CHECK(spirv, SPV_SUCCESS);
 }
+TEST_F(ValidateID, OpConstantCompositeArrayWithUndefGood) {
+  const char* spirv = R"(
+%1 = OpTypeInt 32 0
+%2 = OpConstant %1 4
+%9 = OpUndef %1
+%3 = OpTypeArray %1 %2
+%4 = OpConstantComposite %3 %2 %2 %2 %9)";
+  CHECK(spirv, SPV_SUCCESS);
+}
 TEST_F(ValidateID, OpConstantCompositeArrayConstConstituentBad) {
   const char* spirv = R"(
 %1 = OpTypeInt 32 0
 %2 = OpConstant %1 4
 %3 = OpTypeArray %1 %2
-%4 = OpConstantComposite %3 %2 %2 %2 %1)";
+%4 = OpConstantComposite %3 %2 %2 %2 %1)"; // Uses a type as operand
   CHECK(spirv, SPV_ERROR_INVALID_ID);
 }
-TEST_F(ValidateID, OpConstantCompositeArrayConstituentBad) {
+TEST_F(ValidateID, OpConstantCompositeArrayConstituentTypeBad) {
   const char* spirv = R"(
 %1 = OpTypeInt 32 0
 %2 = OpConstant %1 4
 %3 = OpTypeArray %1 %2
 %5 = OpTypeFloat 32
-%6 = OpConstant %5 3.14
+%6 = OpConstant %5 3.14 ; bad type for const value
+%4 = OpConstantComposite %3 %2 %2 %2 %6)";
+  CHECK(spirv, SPV_ERROR_INVALID_ID);
+}
+TEST_F(ValidateID, OpConstantCompositeArrayConstituentUndefTypeBad) {
+  const char* spirv = R"(
+%1 = OpTypeInt 32 0
+%2 = OpConstant %1 4
+%3 = OpTypeArray %1 %2
+%5 = OpTypeFloat 32
+%6 = OpUndef %5 ; bad type for undef
 %4 = OpConstantComposite %3 %2 %2 %2 %6)";
   CHECK(spirv, SPV_ERROR_INVALID_ID);
 }
@@ -724,13 +779,34 @@ TEST_F(ValidateID, OpConstantCompositeStructGood) {
 %6 = OpConstantComposite %3 %4 %4 %5)";
   CHECK(spirv, SPV_SUCCESS);
 }
-TEST_F(ValidateID, OpConstantCompositeStructMemberBad) {
+TEST_F(ValidateID, OpConstantCompositeStructUndefGood) {
+  const char* spirv = R"(
+%1 = OpTypeInt 32 0
+%2 = OpTypeInt 64 1
+%3 = OpTypeStruct %1 %1 %2
+%4 = OpConstant %1 42
+%5 = OpUndef %2
+%6 = OpConstantComposite %3 %4 %4 %5)";
+  CHECK(spirv, SPV_SUCCESS);
+}
+TEST_F(ValidateID, OpConstantCompositeStructMemberTypeBad) {
   const char* spirv = R"(
 %1 = OpTypeInt 32 0
 %2 = OpTypeInt 64 1
 %3 = OpTypeStruct %1 %1 %2
 %4 = OpConstant %1 42
 %5 = OpConstant %2 4300000000
+%6 = OpConstantComposite %3 %4 %5 %4)";
+  CHECK(spirv, SPV_ERROR_INVALID_ID);
+}
+
+TEST_F(ValidateID, OpConstantCompositeStructMemberUndefTypeBad) {
+  const char* spirv = R"(
+%1 = OpTypeInt 32 0
+%2 = OpTypeInt 64 1
+%3 = OpTypeStruct %1 %1 %2
+%4 = OpConstant %1 42
+%5 = OpUndef %2
 %6 = OpConstantComposite %3 %4 %5 %4)";
   CHECK(spirv, SPV_ERROR_INVALID_ID);
 }

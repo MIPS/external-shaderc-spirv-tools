@@ -1,28 +1,16 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef LIBSPIRV_OPT_INSTRUCTION_H_
 #define LIBSPIRV_OPT_INSTRUCTION_H_
@@ -79,6 +67,9 @@ struct Operand {
 // needs to change, the user should create a new instruction instead.
 class Instruction {
  public:
+  using iterator = std::vector<Operand>::iterator;
+  using const_iterator = std::vector<Operand>::const_iterator;
+
   // Creates a default OpNop instruction.
   Instruction() : opcode_(SpvOpNop), type_id_(0), result_id_(0) {}
   // Creates an instruction with the given opcode |op| and no additional logical
@@ -117,6 +108,15 @@ class Instruction {
     return dbg_line_insts_;
   }
 
+  // Begin and end iterators for operands.
+  iterator begin() { return operands_.begin(); }
+  iterator end() { return operands_.end(); }
+  const_iterator begin() const { return operands_.cbegin(); }
+  const_iterator end() const { return operands_.cend(); }
+  // Const begin and end iterators for operands.
+  const_iterator cbegin() const { return operands_.cbegin(); }
+  const_iterator cend() const { return operands_.cend(); }
+
   // Gets the number of logical operands.
   uint32_t NumOperands() const {
     return static_cast<uint32_t>(operands_.size());
@@ -154,13 +154,16 @@ class Instruction {
   // line-related debug instructions.
   inline void ToNop();
 
-  // Runs the given function |f| on this instruction and preceding debug
-  // instructions.
-  inline void ForEachInst(const std::function<void(Instruction*)>& f);
+  // Runs the given function |f| on this instruction and optionally on the
+  // preceding debug line instructions.  The function will always be run
+  // if this is itself a debug line instruction.
+  inline void ForEachInst(const std::function<void(Instruction*)>& f,
+                          bool run_on_debug_line_insts = false);
+  inline void ForEachInst(const std::function<void(const Instruction*)>& f,
+                          bool run_on_debug_line_insts = false) const;
 
   // Pushes the binary segments for this instruction into the back of *|binary|.
-  // If |skip_nop| is true and this is a OpNop, do nothing.
-  void ToBinary(std::vector<uint32_t>* binary, bool skip_nop) const;
+  void ToBinaryWithoutAttachedDebugInsts(std::vector<uint32_t>* binary) const;
 
  private:
   // Returns the toal count of result type id and result id.
@@ -210,9 +213,18 @@ inline void Instruction::ToNop() {
   operands_.clear();
 }
 
+inline void Instruction::ForEachInst(const std::function<void(Instruction*)>& f,
+                                     bool run_on_debug_line_insts) {
+  if (run_on_debug_line_insts)
+    for (auto& dbg_line : dbg_line_insts_) f(&dbg_line);
+  f(this);
+}
+
 inline void Instruction::ForEachInst(
-    const std::function<void(Instruction*)>& f) {
-  for (auto& dbg_line : dbg_line_insts_) f(&dbg_line);
+    const std::function<void(const Instruction*)>& f,
+    bool run_on_debug_line_insts) const {
+  if (run_on_debug_line_insts)
+    for (auto& dbg_line : dbg_line_insts_) f(&dbg_line);
   f(this);
 }
 

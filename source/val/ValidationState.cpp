@@ -1,28 +1,16 @@
 // Copyright (c) 2015-2016 The Khronos Group Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "val/ValidationState.h"
 
@@ -194,18 +182,17 @@ bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
 
 }  // anonymous namespace
 
-ValidationState_t::ValidationState_t(spv_diagnostic* diagnostic,
-                                     const spv_const_context context)
-    : diagnostic_(diagnostic),
+ValidationState_t::ValidationState_t(const spv_const_context ctx)
+    : context_(ctx),
       instruction_counter_(0),
       unresolved_forward_ids_{},
       operand_names_{},
       current_layout_section_(kLayoutCapabilities),
       module_functions_(),
-      module_capabilities_(0u),
+      module_capabilities_(),
       ordered_instructions_(),
       all_definitions_(),
-      grammar_(context),
+      grammar_(ctx),
       addressing_model_(SpvAddressingModelLogical),
       memory_model_(SpvMemoryModelSimple),
       in_function_(false) {}
@@ -302,7 +289,7 @@ bool ValidationState_t::IsOpcodeInCurrentLayoutSection(SpvOp op) {
 
 DiagnosticStream ValidationState_t::diag(spv_result_t error_code) const {
   return libspirv::DiagnosticStream(
-      {0, 0, static_cast<size_t>(instruction_counter_)}, diagnostic_,
+      {0, 0, static_cast<size_t>(instruction_counter_)}, context_->consumer,
       error_code);
 }
 
@@ -321,26 +308,28 @@ bool ValidationState_t::in_block() const {
 }
 
 void ValidationState_t::RegisterCapability(SpvCapability cap) {
-  module_capabilities_ |= SPV_CAPABILITY_AS_MASK(cap);
+  // Avoid redundant work.  Otherwise the recursion could induce work
+  // quadrdatic in the capability dependency depth. (Ok, not much, but
+  // it's something.)
+  if (module_capabilities_.Contains(cap)) return;
+
+  module_capabilities_.Add(cap);
   spv_operand_desc desc;
   if (SPV_SUCCESS ==
-      grammar_.lookupOperand(SPV_OPERAND_TYPE_CAPABILITY, cap, &desc))
-    libspirv::ForEach(desc->capabilities,
-                      [this](SpvCapability c) { RegisterCapability(c); });
+      grammar_.lookupOperand(SPV_OPERAND_TYPE_CAPABILITY, cap, &desc)) {
+    desc->capabilities.ForEach(
+        [this](SpvCapability c) { RegisterCapability(c); });
+  }
 }
 
-bool ValidationState_t::has_capability(SpvCapability cap) const {
-  return (module_capabilities_ & SPV_CAPABILITY_AS_MASK(cap)) != 0;
-}
-
-bool ValidationState_t::HasAnyOf(spv_capability_mask_t capabilities) const {
-  if (!capabilities)
-    return true;  // No capabilities requested: trivially satisfied.
+bool ValidationState_t::HasAnyOf(const CapabilitySet& capabilities) const {
   bool found = false;
-  libspirv::ForEach(capabilities, [&found, this](SpvCapability c) {
-    found |= has_capability(c);
+  bool any_queried = false;
+  capabilities.ForEach([&found, &any_queried, this](SpvCapability c) {
+    any_queried = true;
+    found = found || this->module_capabilities_.Contains(c);
   });
-  return found;
+  return !any_queried || found;
 }
 
 void ValidationState_t::set_addressing_model(SpvAddressingModel am) {
@@ -387,8 +376,8 @@ spv_result_t ValidationState_t::RegisterFunctionEnd() {
 void ValidationState_t::RegisterInstruction(
     const spv_parsed_instruction_t& inst) {
   if (in_function_body()) {
-    ordered_instructions_.emplace_back(
-        &inst, &current_function(), current_function().current_block());
+    ordered_instructions_.emplace_back(&inst, &current_function(),
+                                       current_function().current_block());
   } else {
     ordered_instructions_.emplace_back(&inst, nullptr, nullptr);
   }

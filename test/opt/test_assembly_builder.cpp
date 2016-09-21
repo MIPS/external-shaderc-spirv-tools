@@ -1,28 +1,16 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "assembly_builder.h"
 
@@ -57,7 +45,8 @@ TEST_F(AssemblyBuilderTest, MinimalShader) {
   };
 
   SinglePassRunAndCheck<opt::NullPass>(builder.GetCode(),
-                                       JoinAllInsts(expected));
+                                       JoinAllInsts(expected),
+                                       /* skip_nop = */ false);
 }
 
 TEST_F(AssemblyBuilderTest, ShaderWithConstants) {
@@ -170,7 +159,8 @@ TEST_F(AssemblyBuilderTest, ShaderWithConstants) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::NullPass>(builder.GetCode(),
-                                       JoinAllInsts(expected));
+                                       JoinAllInsts(expected),
+                                       /* skip_nop = */ false);
 }
 
 TEST_F(AssemblyBuilderTest, SpecConstants) {
@@ -250,7 +240,42 @@ TEST_F(AssemblyBuilderTest, SpecConstants) {
   };
 
   SinglePassRunAndCheck<opt::NullPass>(builder.GetCode(),
-                                       JoinAllInsts(expected));
+                                       JoinAllInsts(expected),
+                                       /* skip_nop = */ false);
+}
+
+TEST_F(AssemblyBuilderTest, AppendNames) {
+  AssemblyBuilder builder;
+  builder.AppendNames({
+      "OpName %void \"another_name_for_void\"",
+      "I am an invalid OpName instruction and should not be added",
+      "OpName %main \"another name for main\"",
+  });
+  std::vector<const char*> expected = {
+      // clang-format off
+                    "OpCapability Shader",
+                    "OpCapability Float64",
+               "%1 = OpExtInstImport \"GLSL.std.450\"",
+                    "OpMemoryModel Logical GLSL450",
+                    "OpEntryPoint Vertex %main \"main\"",
+                    "OpName %void \"void\"",
+                    "OpName %main_func_type \"main_func_type\"",
+                    "OpName %main \"main\"",
+                    "OpName %main_func_entry_block \"main_func_entry_block\"",
+                    "OpName %void \"another_name_for_void\"",
+                    "OpName %main \"another name for main\"",
+            "%void = OpTypeVoid",
+  "%main_func_type = OpTypeFunction %void",
+            "%main = OpFunction %void None %main_func_type",
+"%main_func_entry_block = OpLabel",
+                    "OpReturn",
+                    "OpFunctionEnd",
+      // clang-format on
+  };
+
+  SinglePassRunAndCheck<opt::NullPass>(builder.GetCode(),
+                                       JoinAllInsts(expected),
+                                       /* skip_nop = */ false);
 }
 
 }  // anonymous namespace

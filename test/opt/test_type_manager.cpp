@@ -1,34 +1,22 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "opt/build_module.h"
 #include "opt/instruction.h"
-#include "opt/libspirv.hpp"
 #include "opt/type_manager.h"
 
 namespace {
@@ -101,8 +89,8 @@ TEST(TypeManager, TypeStrings) {
   };
 
   std::unique_ptr<ir::Module> module =
-      SpvTools(SPV_ENV_UNIVERSAL_1_1).BuildModule(text);
-  opt::analysis::TypeManager manager(*module);
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, text);
+  opt::analysis::TypeManager manager(IgnoreMessage, *module);
 
   EXPECT_EQ(type_id_strs.size(), manager.NumTypes());
   EXPECT_EQ(2u, manager.NumForwardPointers());
@@ -131,8 +119,8 @@ TEST(Struct, DecorationOnStruct) {
     %struct7 = OpTypeStruct %f32      ; no decoration
   )";
   std::unique_ptr<ir::Module> module =
-      SpvTools(SPV_ENV_UNIVERSAL_1_1).BuildModule(text);
-  opt::analysis::TypeManager manager(*module);
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, text);
+  opt::analysis::TypeManager manager(IgnoreMessage, *module);
 
   ASSERT_EQ(7u, manager.NumTypes());
   ASSERT_EQ(0u, manager.NumForwardPointers());
@@ -181,8 +169,8 @@ TEST(Struct, DecorationOnMember) {
     %struct10 = OpTypeStruct %u32 %f32 ; no member decoration
   )";
   std::unique_ptr<ir::Module> module =
-      SpvTools(SPV_ENV_UNIVERSAL_1_1).BuildModule(text);
-  opt::analysis::TypeManager manager(*module);
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, text);
+  opt::analysis::TypeManager manager(IgnoreMessage, *module);
 
   ASSERT_EQ(10u, manager.NumTypes());
   ASSERT_EQ(0u, manager.NumForwardPointers());
@@ -205,6 +193,37 @@ TEST(Struct, DecorationOnMember) {
       }
     }
   }
+}
+
+TEST(Types, DecorationEmpty) {
+  const std::string text = R"(
+    OpDecorate %struct1 Block
+    OpMemberDecorate %struct2  0 Offset 0
+
+    %u32 = OpTypeInt 32 0 ; id: 3
+    %f32 = OpTypeFloat 32 ; id: 4
+    %struct1  = OpTypeStruct %u32 %f32
+    %struct2  = OpTypeStruct %f32 %u32
+    %struct5  = OpTypeStruct %f32
+  )";
+  std::unique_ptr<ir::Module> module =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, text);
+  opt::analysis::TypeManager manager(IgnoreMessage, *module);
+
+  ASSERT_EQ(5u, manager.NumTypes());
+  ASSERT_EQ(0u, manager.NumForwardPointers());
+  // Make sure we get ids correct.
+  ASSERT_EQ("uint32", manager.GetType(3)->str());
+  ASSERT_EQ("float32", manager.GetType(4)->str());
+
+  // %struct1 with decoration on itself
+  EXPECT_FALSE(manager.GetType(1)->decoration_empty());
+  // %struct2 with decoration on its member
+  EXPECT_FALSE(manager.GetType(2)->decoration_empty());
+  EXPECT_TRUE(manager.GetType(3)->decoration_empty());
+  EXPECT_TRUE(manager.GetType(4)->decoration_empty());
+  // %struct5 has no decorations
+  EXPECT_TRUE(manager.GetType(5)->decoration_empty());
 }
 
 }  // anonymous namespace

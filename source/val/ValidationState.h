@@ -1,28 +1,16 @@
 // Copyright (c) 2015-2016 The Khronos Group Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef LIBSPIRV_VAL_VALIDATIONSTATE_H_
 #define LIBSPIRV_VAL_VALIDATIONSTATE_H_
@@ -35,6 +23,7 @@
 
 #include "assembly_grammar.h"
 #include "diagnostic.h"
+#include "enum_set.h"
 #include "spirv-tools/libspirv.h"
 #include "spirv/1.1/spirv.h"
 #include "spirv_definition.h"
@@ -64,8 +53,10 @@ enum ModuleLayoutSection {
 /// This class manages the state of the SPIR-V validation as it is being parsed.
 class ValidationState_t {
  public:
-  ValidationState_t(spv_diagnostic* diagnostic,
-                    const spv_const_context context);
+  ValidationState_t(const spv_const_context context);
+
+  /// Returns the context
+  spv_const_context context() const { return context_; }
 
   /// Forward declares the id in the module
   spv_result_t ForwardDeclareId(uint32_t id);
@@ -139,11 +130,13 @@ class ValidationState_t {
   spv_result_t RegisterFunctionEnd();
 
   /// Returns true if the capability is enabled in the module.
-  bool has_capability(SpvCapability cap) const;
+  bool HasCapability(SpvCapability cap) const {
+    return module_capabilities_.Contains(cap);
+  }
 
-  /// Returns true if any of the capabilities are enabled.  Always true for
-  /// capabilities==0.
-  bool HasAnyOf(spv_capability_mask_t capabilities) const;
+  /// Returns true if any of the capabilities are enabled, or if the given
+  /// capabilities is the empty set.
+  bool HasAnyOf(const libspirv::CapabilitySet& capabilities) const;
 
   /// Sets the addressing model of this module (logical/physical).
   void set_addressing_model(SpvAddressingModel am);
@@ -183,7 +176,8 @@ class ValidationState_t {
  private:
   ValidationState_t(const ValidationState_t&);
 
-  spv_diagnostic* diagnostic_;
+  const spv_const_context context_;
+
   /// Tracks the number of instructions evaluated by the validator
   int instruction_counter_;
 
@@ -199,8 +193,8 @@ class ValidationState_t {
   /// A list of functions in the module
   std::deque<Function> module_functions_;
 
-  /// Mask of the capabilities available in the module
-  spv_capability_mask_t
+  /// The capabilities available in the module
+  libspirv::CapabilitySet
       module_capabilities_;  /// Module's declared capabilities.
 
   /// List of all instructions in the order they appear in the binary

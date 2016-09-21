@@ -1,28 +1,16 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // This file provides a class hierarchy for representing SPIR-V types.
 
@@ -84,6 +72,11 @@ class Type {
   // Returns a human-readable string to represent this type.
   virtual std::string str() const = 0;
 
+  // Returns true if there is no decoration on this type. For struct types,
+  // returns true only when there is no decoration for both the struct type
+  // and the struct members.
+  virtual bool decoration_empty() const { return decorations_.empty(); }
+
 // A bunch of methods for casting this type to a given type. Returns this if the
 // cast can be done, nullptr otherwise.
 #define DeclareCastMethod(target)                  \
@@ -123,7 +116,7 @@ class Type {
 
 class Integer : public Type {
  public:
-  Integer(uint32_t width, bool is_signed) : width_(width), signed_(is_signed) {}
+  Integer(uint32_t w, bool is_signed) : width_(w), signed_(is_signed) {}
   Integer(const Integer&) = default;
 
   bool IsSame(Type* that) const override;
@@ -131,6 +124,8 @@ class Integer : public Type {
 
   Integer* AsInteger() override { return this; }
   const Integer* AsInteger() const override { return this; }
+  uint32_t width() const { return width_; }
+  bool IsSigned() const { return signed_; }
 
  private:
   uint32_t width_;  // bit width
@@ -139,7 +134,7 @@ class Integer : public Type {
 
 class Float : public Type {
  public:
-  Float(uint32_t width) : width_(width) {}
+  Float(uint32_t w) : width_(w) {}
   Float(const Float&) = default;
 
   bool IsSame(Type* that) const override;
@@ -147,6 +142,7 @@ class Float : public Type {
 
   Float* AsFloat() override { return this; }
   const Float* AsFloat() const override { return this; }
+  uint32_t width() const { return width_; }
 
  private:
   uint32_t width_;  // bit width
@@ -160,6 +156,7 @@ class Vector : public Type {
   bool IsSame(Type* that) const override;
   std::string str() const override;
   const Type* element_type() const { return element_type_; }
+  uint32_t element_count() const { return count_; }
 
   Vector* AsVector() override { return this; }
   const Vector* AsVector() const override { return this; }
@@ -177,6 +174,7 @@ class Matrix : public Type {
   bool IsSame(Type* that) const override;
   std::string str() const override;
   const Type* element_type() const { return element_type_; }
+  uint32_t element_count() const { return count_; }
 
   Matrix* AsMatrix() override { return this; }
   const Matrix* AsMatrix() const override { return this; }
@@ -267,6 +265,9 @@ class Struct : public Type {
 
   bool IsSame(Type* that) const override;
   std::string str() const override;
+  bool decoration_empty() const override {
+    return decorations_.empty() && element_decorations_.empty();
+  }
 
   Struct* AsStruct() override { return this; }
   const Struct* AsStruct() const override { return this; }

@@ -1,36 +1,25 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "def_use_manager.h"
 
-#include <cassert>
 #include <functional>
 
 #include "instruction.h"
+#include "log.h"
 #include "module.h"
+#include "reflect.h"
 
 namespace spvtools {
 namespace opt {
@@ -38,10 +27,22 @@ namespace analysis {
 
 void DefUseManager::AnalyzeInstDefUse(ir::Instruction* inst) {
   const uint32_t def_id = inst->result_id();
-  // Clear the records of def_id first if it has been recorded before.
-  ClearDef(def_id);
+  if (def_id != 0) {
+    auto iter = id_to_def_.find(def_id);
+    if (iter != id_to_def_.end()) {
+      // Clear the original instruction that defining the same result id of the
+      // new instruction.
+      ClearInst(iter->second);
+    }
+    id_to_def_[def_id] = inst;
+  } else {
+    ClearInst(inst);
+  }
 
-  if (def_id != 0) id_to_def_[def_id] = inst;
+  // Create entry for the given instruction. Note that the instruction may
+  // not have any in-operands. In such cases, we still need a entry for those
+  // instructions so this manager knows it has seen the instruction later.
+  inst_to_used_ids_[inst] = {};
 
   for (uint32_t i = 0; i < inst->NumOperands(); ++i) {
     switch (inst->GetOperand(i).type) {
@@ -53,7 +54,7 @@ void DefUseManager::AnalyzeInstDefUse(ir::Instruction* inst) {
         uint32_t use_id = inst->GetSingleWordOperand(i);
         // use_id is used by the instruction generating def_id.
         id_to_uses_[use_id].push_back({inst, i});
-        if (def_id != 0) result_id_to_used_ids_[def_id].push_back(use_id);
+        inst_to_used_ids_[inst].push_back(use_id);
       } break;
       default:
         break;
@@ -62,22 +63,46 @@ void DefUseManager::AnalyzeInstDefUse(ir::Instruction* inst) {
 }
 
 ir::Instruction* DefUseManager::GetDef(uint32_t id) {
-  if (id_to_def_.count(id) == 0) return nullptr;
-  return id_to_def_.at(id);
+  auto iter = id_to_def_.find(id);
+  if (iter == id_to_def_.end()) return nullptr;
+  return iter->second;
 }
 
 UseList* DefUseManager::GetUses(uint32_t id) {
-  if (id_to_uses_.count(id) == 0) return nullptr;
-  return &id_to_uses_.at(id);
+  auto iter = id_to_uses_.find(id);
+  if (iter == id_to_uses_.end()) return nullptr;
+  return &iter->second;
+}
+
+const UseList* DefUseManager::GetUses(uint32_t id) const {
+  const auto iter = id_to_uses_.find(id);
+  if (iter == id_to_uses_.end()) return nullptr;
+  return &iter->second;
+}
+
+std::vector<ir::Instruction*> DefUseManager::GetAnnotations(uint32_t id) const {
+  std::vector<ir::Instruction*> annos;
+  const auto* uses = GetUses(id);
+  if (!uses) return annos;
+  for (const auto& c : *uses) {
+    if (ir::IsAnnotationInst(c.inst->opcode())) {
+      annos.push_back(c.inst);
+    }
+  }
+  return annos;
 }
 
 bool DefUseManager::KillDef(uint32_t id) {
-  if (id_to_def_.count(id) == 0) return false;
-
-  ir::Instruction* defining_inst = id_to_def_.at(id);
-  ClearDef(id);
-  defining_inst->ToNop();
+  auto iter = id_to_def_.find(id);
+  if (iter == id_to_def_.end()) return false;
+  KillInst(iter->second);
   return true;
+}
+
+void DefUseManager::KillInst(ir::Instruction* inst) {
+  if (!inst) return;
+  ClearInst(inst);
+  inst->ToNop();
 }
 
 bool DefUseManager::ReplaceAllUsesWith(uint32_t before, uint32_t after) {
@@ -88,14 +113,23 @@ bool DefUseManager::ReplaceAllUsesWith(uint32_t before, uint32_t after) {
        ++it) {
     const uint32_t type_result_id_count =
         (it->inst->result_id() != 0) + (it->inst->type_id() != 0);
-    if (!it->operand_index) {
-      assert(it->inst->type_id() != 0 &&
-             "result type id considered as using while the instruction doesn't "
-             "have a result type id");
-      it->inst->SetResultType(after);
+
+    if (it->operand_index < type_result_id_count) {
+      // Update the type_id. Note that result id is immutable so it should
+      // never be updated.
+      if (it->inst->type_id() != 0 && it->operand_index == 0) {
+        it->inst->SetResultType(after);
+      } else if (it->inst->type_id() == 0) {
+        SPIRV_ASSERT(consumer_, false,
+                     "Result type id considered as use while the instruction "
+                     "doesn't have a result type id.");
+        (void)consumer_;  // Makes the compiler happy for release build.
+      } else {
+        SPIRV_ASSERT(consumer_, false,
+                     "Trying setting the immutable result id.");
+      }
     } else {
-      assert(it->operand_index >= type_result_id_count &&
-             "the operand to be set is not an in-operand.");
+      // Update an in-operand.
       uint32_t in_operand_pos = it->operand_index - type_result_id_count;
       // Make the modification in the instruction.
       it->inst->SetInOperand(in_operand_pos, {after});
@@ -109,30 +143,42 @@ bool DefUseManager::ReplaceAllUsesWith(uint32_t before, uint32_t after) {
 }
 
 void DefUseManager::AnalyzeDefUse(ir::Module* module) {
+  if (!module) return;
   module->ForEachInst(std::bind(&DefUseManager::AnalyzeInstDefUse, this,
                                 std::placeholders::_1));
 }
 
-void DefUseManager::ClearDef(uint32_t def_id) {
-  if (id_to_def_.count(def_id) == 0) return;
+void DefUseManager::ClearInst(ir::Instruction* inst) {
+  auto iter = inst_to_used_ids_.find(inst);
+  if (iter != inst_to_used_ids_.end()) {
+    EraseUseRecordsOfOperandIds(inst);
+    if (inst->result_id() != 0) {
+      id_to_uses_.erase(inst->result_id());  // Remove all uses of this id.
+      id_to_def_.erase(inst->result_id());
+    }
+  }
+}
 
+void DefUseManager::EraseUseRecordsOfOperandIds(const ir::Instruction* inst) {
   // Go through all ids used by this instruction, remove this instruction's
   // uses of them.
-  for (const auto use_id : result_id_to_used_ids_[def_id]) {
-    if (id_to_uses_.count(use_id) == 0) continue;
-    auto& uses = id_to_uses_[use_id];
-    for (auto it = uses.begin(); it != uses.end();) {
-      if (it->inst->result_id() == def_id) {
-        it = uses.erase(it);
-      } else {
-        ++it;
+  auto iter = inst_to_used_ids_.find(inst);
+  if (iter != inst_to_used_ids_.end()) {
+    for (const auto use_id : iter->second) {
+      auto uses_iter = id_to_uses_.find(use_id);
+      if (uses_iter == id_to_uses_.end()) continue;
+      auto& uses = uses_iter->second;
+      for (auto it = uses.begin(); it != uses.end();) {
+        if (it->inst == inst) {
+          it = uses.erase(it);
+        } else {
+          ++it;
+        }
       }
+      if (uses.empty()) id_to_uses_.erase(use_id);
     }
-    if (uses.empty()) id_to_uses_.erase(use_id);
+    inst_to_used_ids_.erase(inst);
   }
-  result_id_to_used_ids_.erase(def_id);
-  id_to_uses_.erase(def_id);  // Remove all uses of this id.
-  id_to_def_.erase(def_id);
 }
 
 }  // namespace analysis

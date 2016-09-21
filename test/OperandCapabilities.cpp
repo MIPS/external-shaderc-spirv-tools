@@ -1,49 +1,43 @@
 // Copyright (c) 2015-2016 The Khronos Group Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Test capability dependencies for enums.
 
 #include <tuple>
 
+#include "gmock/gmock.h"
+
+#include "enum_set.h"
 #include "UnitSPIRV.h"
 
 namespace {
 
+using libspirv::CapabilitySet;
+using spvtest::ElementsIn;
+using std::get;
+using std::tuple;
 using ::testing::Combine;
+using ::testing::Eq;
 using ::testing::TestWithParam;
 using ::testing::Values;
 using ::testing::ValuesIn;
-using std::get;
-using std::tuple;
 
 // A test case for mapping an enum to a capability mask.
 struct EnumCapabilityCase {
   spv_operand_type_t type;
   uint32_t value;
-  uint64_t expected_mask;
+  CapabilitySet expected_capabilities;
 };
 
 // Test fixture for testing EnumCapabilityCases.
@@ -57,21 +51,25 @@ TEST_P(EnumCapabilityTest, Sample) {
   ASSERT_EQ(SPV_SUCCESS,
             spvOperandTableValueLookup(operandTable, get<1>(GetParam()).type,
                                        get<1>(GetParam()).value, &entry));
-  EXPECT_EQ(get<1>(GetParam()).expected_mask, entry->capabilities);
+  EXPECT_THAT(ElementsIn(entry->capabilities),
+              Eq(ElementsIn(get<1>(GetParam()).expected_capabilities)));
 }
 
-#define CASE0(TYPE, VALUE) \
-  { SPV_OPERAND_TYPE_##TYPE, uint32_t(Spv##VALUE), 0 }
-#define CASE1(TYPE, VALUE, CAP)                    \
-  {                                                \
-    SPV_OPERAND_TYPE_##TYPE, uint32_t(Spv##VALUE), \
-        SPV_CAPABILITY_AS_MASK(SpvCapability##CAP) \
+#define CASE0(TYPE, VALUE)                            \
+  {                                                   \
+    SPV_OPERAND_TYPE_##TYPE, uint32_t(Spv##VALUE), {} \
   }
-#define CASE2(TYPE, VALUE, CAP1, CAP2)                 \
-  {                                                    \
-    SPV_OPERAND_TYPE_##TYPE, uint32_t(Spv##VALUE),     \
-        (SPV_CAPABILITY_AS_MASK(SpvCapability##CAP1) | \
-         SPV_CAPABILITY_AS_MASK(SpvCapability##CAP2))  \
+#define CASE1(TYPE, VALUE, CAP)                                    \
+  {                                                                \
+    SPV_OPERAND_TYPE_##TYPE, uint32_t(Spv##VALUE), CapabilitySet { \
+      SpvCapability##CAP                                           \
+    }                                                              \
+  }
+#define CASE2(TYPE, VALUE, CAP1, CAP2)                             \
+  {                                                                \
+    SPV_OPERAND_TYPE_##TYPE, uint32_t(Spv##VALUE), CapabilitySet { \
+      SpvCapability##CAP1, SpvCapability##CAP2                     \
+    }                                                              \
   }
 
 // See SPIR-V Section 3.3 Execution Model
@@ -456,13 +454,13 @@ INSTANTIATE_TEST_CASE_P(
                 CASE1(DECORATION, DecorationAlignment, Kernel),
             })), );
 
+#if 0
 // SpecId has different requirements in v1.0 and v1.1:
-INSTANTIATE_TEST_CASE_P(
-    DecorationSpecIdV10, EnumCapabilityTest,
-    Combine(Values(SPV_ENV_UNIVERSAL_1_0),
-            Values(EnumCapabilityCase{
-                SPV_OPERAND_TYPE_DECORATION, uint32_t(SpvDecorationSpecId),
-                SPV_CAPABILITY_AS_MASK(SpvCapabilityShader)})));
+INSTANTIATE_TEST_CASE_P(DecorationSpecIdV10, EnumCapabilityTest,
+                        Combine(Values(SPV_ENV_UNIVERSAL_1_0),
+                                ValuesIn(std::vector<EnumCapabilityCase>{CASE1(
+                                    DECORATION, DecorationSpecId, Shader)})), );
+#endif
 
 INSTANTIATE_TEST_CASE_P(
     DecorationV11, EnumCapabilityTest,
