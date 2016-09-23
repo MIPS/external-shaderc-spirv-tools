@@ -1,28 +1,16 @@
 # Copyright (c) 2015-2016 The Khronos Group Inc.
 #
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and/or associated documentation files (the
-# "Materials"), to deal in the Materials without restriction, including
-# without limitation the rights to use, copy, modify, merge, publish,
-# distribute, sublicense, and/or sell copies of the Materials, and to
-# permit persons to whom the Materials are furnished to do so, subject to
-# the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# The above copyright notice and this permission notice shall be included
-# in all copies or substantial portions of the Materials.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-# KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-# SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-#    https://www.khronos.org/registry/
-#
-# THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-# MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # Add a SPIR-V Tools unit test. Signature:
 #   add_spvtools_unittest(
@@ -46,28 +34,30 @@ function(add_spvtools_unittest)
     set(multi_value_args SRCS LIBS)
     cmake_parse_arguments(
       ARG "" "${one_value_args}" "${multi_value_args}" ${ARGN})
-    add_executable(${ARG_TARGET} ${ARG_SRCS})
-    spvtools_default_compile_options(${ARG_TARGET})
+    set(target test_${ARG_TARGET})
+    add_executable(${target} ${ARG_SRCS})
+    spvtools_default_compile_options(${target})
     if(${COMPILER_IS_LIKE_GNU})
-      target_compile_options(${ARG_TARGET} PRIVATE -Wno-undef)
+      target_compile_options(${target} PRIVATE -Wno-undef)
     endif()
-    if(${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
+    if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
       # Disable C4503 "decorated name length exceeded" warning,
       # triggered by some heavily templated types.
       # We don't care much about that in test code.
       # Important to do since we have warnings-as-errors.
-      target_compile_options(${ARG_TARGET} PRIVATE /wd4503)
+      target_compile_options(${target} PRIVATE /wd4503)
     endif()
-    target_include_directories(${ARG_TARGET} PRIVATE
+    target_include_directories(${target} PRIVATE
+      ${SPIRV_HEADER_INCLUDE_DIR}
       ${spirv-tools_SOURCE_DIR}
       ${spirv-tools_SOURCE_DIR}/include
-      ${SPIRV_HEADER_INCLUDE_DIR}
+      ${spirv-tools_SOURCE_DIR}/test
       ${gtest_SOURCE_DIR}/include
       ${gmock_SOURCE_DIR}/include
     )
-    target_link_libraries(${ARG_TARGET} PRIVATE ${ARG_LIBS})
-    target_link_libraries(${ARG_TARGET} PRIVATE gmock_main)
-    add_test(NAME spirv-tools-${ARG_TARGET} COMMAND ${ARG_TARGET})
+    target_link_libraries(${target} PRIVATE ${ARG_LIBS})
+    target_link_libraries(${target} PRIVATE gmock_main)
+    add_test(NAME spirv-tools-${target} COMMAND ${target})
   endif()
 endfunction()
 
@@ -83,10 +73,8 @@ set(TEST_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/BinaryParse.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/BinaryToText.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/BinaryToText.Literal.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CapabilitySet.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/Comment.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/DiagnosticDestroy.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/DiagnosticPrint.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/DiagnosticStream.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/ExtInstGLSLstd450.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/ExtInst.OpenCL.std.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/FixWord.cpp
@@ -129,18 +117,21 @@ set(TEST_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/TextToBinary.SubgroupDispatch.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/TextWordGet.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/UnitSPIRV.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/ValidateFixtures.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/Validate.Capability.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/Validate.CFG.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/Validate.Layout.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/Validate.Storage.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/Validate.SSA.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/ValidateID.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/ValidationState.cpp
 )
+
 add_spvtools_unittest(
-  TARGET UnitSPIRV
+  TARGET spirv_unit_tests
   SRCS ${TEST_SOURCES}
+  LIBS ${SPIRV_TOOLS})
+
+add_spvtools_unittest(
+  TARGET diagnostic
+  SRCS diagnostic.cpp
+  LIBS ${SPIRV_TOOLS})
+
+add_spvtools_unittest(
+  TARGET c_interface
+  SRCS c_interface.cpp
   LIBS ${SPIRV_TOOLS})
 
 add_spvtools_unittest(
@@ -148,4 +139,15 @@ add_spvtools_unittest(
   SRCS cpp_interface.cpp
   LIBS SPIRV-Tools-opt ${SPIRV_TOOLS})
 
+add_spvtools_unittest(
+  TARGET parse_number
+  SRCS ${CMAKE_CURRENT_SOURCE_DIR}/ParseNumber.cpp
+  LIBS ${SPIRV_TOOLS})
+
+add_spvtools_unittest(
+  TARGET log
+  SRCS test_log.cpp
+  LIBS ${SPIRV_TOOLS})
+
 add_subdirectory(opt)
+add_subdirectory(val)

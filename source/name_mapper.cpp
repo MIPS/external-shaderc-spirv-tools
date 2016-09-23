@@ -1,31 +1,20 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "name_mapper.h"
 
+#include <cassert>
 #include <algorithm>
 #include <iterator>
 #include <sstream>
@@ -107,12 +96,92 @@ void FriendlyNameMapper::SaveName(uint32_t id,
   name_for_id_[id] = name;
 }
 
+void FriendlyNameMapper::SaveBuiltInName(uint32_t target_id,
+                                         uint32_t built_in) {
+#define GLCASE(name)                  \
+  case SpvBuiltIn##name:              \
+    SaveName(target_id, "gl_" #name); \
+    return;
+#define GLCASE2(name, suggested)           \
+  case SpvBuiltIn##name:                   \
+    SaveName(target_id, "gl_" #suggested); \
+    return;
+#define CASE(name)              \
+  case SpvBuiltIn##name:        \
+    SaveName(target_id, #name); \
+    return;
+  switch (built_in) {
+    GLCASE(Position)
+    GLCASE(PointSize)
+    GLCASE(ClipDistance)
+    GLCASE(CullDistance)
+    GLCASE2(VertexId, VertexID)
+    GLCASE2(InstanceId, InstanceID)
+    GLCASE2(PrimitiveId, PrimitiveID)
+    GLCASE2(InvocationId, InvocationID)
+    GLCASE(Layer)
+    GLCASE(ViewportIndex)
+    GLCASE(TessLevelOuter)
+    GLCASE(TessLevelInner)
+    GLCASE(TessCoord)
+    GLCASE(PatchVertices)
+    GLCASE(FragCoord)
+    GLCASE(PointCoord)
+    GLCASE(FrontFacing)
+    GLCASE2(SampleId, SampleID)
+    GLCASE(SamplePosition)
+    GLCASE(SampleMask)
+    GLCASE(FragDepth)
+    GLCASE(HelperInvocation)
+    GLCASE2(NumWorkgroups, NumWorkGroups)
+    GLCASE2(WorkgroupSize, WorkGroupSize)
+    GLCASE2(WorkgroupId, WorkGroupID)
+    GLCASE2(LocalInvocationId, LocalInvocationID)
+    GLCASE2(GlobalInvocationId, GlobalInvocationID)
+    GLCASE(LocalInvocationIndex)
+    CASE(WorkDim)
+    CASE(GlobalSize)
+    CASE(EnqueuedWorkgroupSize)
+    CASE(GlobalOffset)
+    CASE(GlobalLinearId)
+    CASE(SubgroupSize)
+    CASE(SubgroupMaxSize)
+    CASE(NumSubgroups)
+    CASE(NumEnqueuedSubgroups)
+    CASE(SubgroupId)
+    CASE(SubgroupLocalInvocationId)
+    GLCASE(VertexIndex)
+    GLCASE(InstanceIndex)
+    CASE(SubgroupEqMaskKHR)
+    CASE(SubgroupGeMaskKHR)
+    CASE(SubgroupGtMaskKHR)
+    CASE(SubgroupLeMaskKHR)
+    CASE(SubgroupLtMaskKHR)
+    default:
+      break;
+  }
+#undef GLCASE
+#undef GLCASE2
+#undef CASE
+}
+
 spv_result_t FriendlyNameMapper::ParseInstruction(
     const spv_parsed_instruction_t& inst) {
   const auto result_id = inst.result_id;
   switch (inst.opcode) {
     case SpvOpName:
       SaveName(inst.words[1], reinterpret_cast<const char*>(inst.words + 2));
+      break;
+    case SpvOpDecorate:
+      // Decorations come after OpName.  So OpName will take precedence over
+      // decorations.
+      //
+      // In theory, we should also handle OpGroupDecorate.  But that's unlikely
+      // to occur.
+      if (inst.words[2] == SpvDecorationBuiltIn) {
+        assert(inst.num_words > 3);
+        SaveBuiltInName(inst.words[1], inst.words[3]);
+      }
       break;
     case SpvOpTypeVoid:
       SaveName(result_id, "void");

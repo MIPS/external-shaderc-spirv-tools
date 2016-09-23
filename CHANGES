@@ -1,11 +1,39 @@
 Revision history for SPIRV-Tools
 
-v2016.3-dev 2016-08-05
- - Start v2016.3
+v2016.6-dev 2016-09-16
+
+v2016.5 2016-09-16
+ - Support SPV_KHR_shader_ballot in assembler, disassembler, parser.
+ - Disassembler: Generate friendly names for built-in variables.
+ - Partial fixes:
+   #359: Add Emacs helper for automatically diassembling/assembling a SPIR-V
+     binary on file load/save.
+ - Fixes:
+   #414: Validator: Allow OpUndef for composite constants
+   #415: Validator: Phi can use its own value in some cases.
+
+v2016.4 2016-09-01
+ - Relicensed under Apache 2.0
+ - Add optimization passes (in API and spirv-opt command)
+   - Fold spec constants defined with OpSpecConstantOp and
+       OpSpecConstantComposite to normal constants with fixed value(s).
+ - Fixes issues:
+   #318: Relicensed under Apache 2.0
+
+v2016.3 2016-08-24
  - Add target environment enums for OpenCL 2.1, OpenCL 2.2,
    OpenGL 4.0, OpenGL 4.1, OpenGL 4.2, OpenGL 4.3, OpenGL 4.5.
+ - Add spirv-cfg, an experimental tool to dump the control flow graph
+   as a GraphiViz "dot" graph
+ - Add optimization pass: Eliminate dead constants.
+ - Add spirv-lesspipe.sh filter utility
  - Fixes issues:
+   #288: Check def-use dominance rules for OpPhi (variable,parent) operands
+   #339: Allow OpUndef in types-constants-global-vars section, as required
+     by SPIR-V 1.0 Rev7, 1.1 Rev 3.
    #340: Avoid race on mkdir during build
+   #365: Relax PointSize, ClipDistance, CullDistance capability check in all
+     environments not just Vulkan 1.0.
 
 v2016.2 2016-08-05
  - Validator is incomplete

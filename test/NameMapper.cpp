@@ -1,28 +1,16 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "gmock/gmock.h"
 
@@ -216,5 +204,82 @@ INSTANTIATE_TEST_CASE_P(ExoticTypes, FriendlyNameTest,
                             {"%1 = OpTypePipeStorage", 1, "PipeStorage"},
                             {"%1 = OpTypeNamedBarrier", 1, "NamedBarrier"},
                         }), );
+
+// Makes a test case for a BuiltIn variable declaration.
+NameIdCase BuiltInCase(std::string assembly_name, std::string expected) {
+  return NameIdCase{std::string("OpDecorate %1 BuiltIn ") + assembly_name +
+                        " %1 = OpVariable %2 Input",
+                    1, expected};
+}
+
+// Makes a test case for a BuiltIn variable declaration.  In this overload,
+// the expected result is the same as the assembly name.
+NameIdCase BuiltInCase(std::string assembly_name) {
+  return BuiltInCase(assembly_name, assembly_name);
+}
+
+// Makes a test case for a BuiltIn variable declaration.  In this overload,
+// the expected result is the same as the assembly name, but with a "gl_"
+// prefix.
+NameIdCase BuiltInGLCase(std::string assembly_name) {
+  return BuiltInCase(assembly_name, std::string("gl_") + assembly_name);
+}
+
+INSTANTIATE_TEST_CASE_P(
+    BuiltIns, FriendlyNameTest,
+    ::testing::ValuesIn(std::vector<NameIdCase>{
+        BuiltInGLCase("Position"),
+        BuiltInGLCase("PointSize"),
+        BuiltInGLCase("ClipDistance"),
+        BuiltInGLCase("CullDistance"),
+        BuiltInCase("VertexId", "gl_VertexID"),
+        BuiltInCase("InstanceId", "gl_InstanceID"),
+        BuiltInCase("PrimitiveId", "gl_PrimitiveID"),
+        BuiltInCase("InvocationId", "gl_InvocationID"),
+        BuiltInGLCase("Layer"),
+        BuiltInGLCase("ViewportIndex"),
+        BuiltInGLCase("TessLevelOuter"),
+        BuiltInGLCase("TessLevelInner"),
+        BuiltInGLCase("TessCoord"),
+        BuiltInGLCase("PatchVertices"),
+        BuiltInGLCase("FragCoord"),
+        BuiltInGLCase("PointCoord"),
+        BuiltInGLCase("FrontFacing"),
+        BuiltInCase("SampleId", "gl_SampleID"),
+        BuiltInGLCase("SamplePosition"),
+        BuiltInGLCase("SampleMask"),
+        BuiltInGLCase("FragDepth"),
+        BuiltInGLCase("HelperInvocation"),
+        BuiltInCase("NumWorkgroups", "gl_NumWorkGroups"),
+        BuiltInCase("WorkgroupSize", "gl_WorkGroupSize"),
+        BuiltInCase("WorkgroupId", "gl_WorkGroupID"),
+        BuiltInCase("LocalInvocationId", "gl_LocalInvocationID"),
+        BuiltInCase("GlobalInvocationId", "gl_GlobalInvocationID"),
+        BuiltInGLCase("LocalInvocationIndex"),
+        BuiltInCase("WorkDim"),
+        BuiltInCase("GlobalSize"),
+        BuiltInCase("EnqueuedWorkgroupSize"),
+        BuiltInCase("GlobalOffset"),
+        BuiltInCase("GlobalLinearId"),
+        BuiltInCase("SubgroupSize"),
+        BuiltInCase("SubgroupMaxSize"),
+        BuiltInCase("NumSubgroups"),
+        BuiltInCase("NumEnqueuedSubgroups"),
+        BuiltInCase("SubgroupId"),
+        BuiltInCase("SubgroupLocalInvocationId"),
+        BuiltInGLCase("VertexIndex"),
+        BuiltInGLCase("InstanceIndex"),
+        BuiltInCase("SubgroupEqMaskKHR"),
+        BuiltInCase("SubgroupGeMaskKHR"),
+        BuiltInCase("SubgroupGtMaskKHR"),
+        BuiltInCase("SubgroupLeMaskKHR"),
+        BuiltInCase("SubgroupLtMaskKHR"),
+    }), );
+
+INSTANTIATE_TEST_CASE_P(DebugNameOverridesBuiltin, FriendlyNameTest,
+                        ::testing::ValuesIn(std::vector<NameIdCase>{
+                            {"OpName %1 \"foo\" OpDecorate %1 BuiltIn WorkDim "
+                             "%1 = OpVariable %2 Input",
+                             1, "foo"}}), );
 
 }  // anonymous namespace

@@ -1,30 +1,25 @@
 # Copyright (c) 2015-2016 The Khronos Group Inc.
 #
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and/or associated documentation files (the
-# "Materials"), to deal in the Materials without restriction, including
-# without limitation the rights to use, copy, modify, merge, publish,
-# distribute, sublicense, and/or sell copies of the Materials, and to
-# permit persons to whom the Materials are furnished to do so, subject to
-# the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# The above copyright notice and this permission notice shall be included
-# in all copies or substantial portions of the Materials.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-# KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-# SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-#    https://www.khronos.org/registry/
-#
-# THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-# MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 cmake_minimum_required(VERSION 2.8.12)
+if (POLICY CMP0054)
+  # Avoid dereferencing variables or interpret keywords that have been
+  # quoted or bracketed.
+  # https://cmake.org/cmake/help/v3.1/policy/CMP0054.html
+  cmake_policy(SET CMP0054 NEW)
+endif()
+
 project(spirv-tools)
 enable_testing()
 set(SPIRV_TOOLS "SPIRV-Tools")
@@ -49,7 +44,7 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
 endif()
 
 option(SPIRV_WERROR "Enable error on warning" ON)
-if((${CMAKE_CXX_COMPILER_ID} MATCHES "GNU") OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
+if(("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang"))
   set(COMPILER_IS_LIKE_GNU TRUE)
 endif()
 if(${COMPILER_IS_LIKE_GNU})
@@ -84,6 +79,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/source)
 option(SPIRV_COLOR_TERMINAL "Enable color terminal output" ON)
 if(${SPIRV_COLOR_TERMINAL})
   add_definitions(-DSPIRV_COLOR_TERMINAL)
+endif()
+
+option(SPIRV_LOG_DEBUG "Enable excessive debug output" OFF)
+if(${SPIRV_LOG_DEBUG})
+  add_definitions(-DSPIRV_LOG_DEBUG)
 endif()
 
 function(spvtools_default_compile_options TARGET)
@@ -155,3 +155,7 @@ add_subdirectory(test)
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/libspirv.h
   DESTINATION include/spirv-tools/)
+
+add_test(NAME spirv-tools-copyrights
+         COMMAND ${PYTHON_EXECUTABLE} utils/check_copyright.py
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

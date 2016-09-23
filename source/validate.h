@@ -1,28 +1,16 @@
 // Copyright (c) 2015-2016 The Khronos Group Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef LIBSPIRV_VALIDATE_H_
 #define LIBSPIRV_VALIDATE_H_
@@ -32,6 +20,7 @@
 #include <vector>
 
 #include "instruction.h"
+#include "message.h"
 #include "spirv-tools/libspirv.h"
 #include "table.h"
 
@@ -101,6 +90,16 @@ std::vector<std::pair<BasicBlock*, BasicBlock*>> CalculateDominators(
 /// @return SPV_SUCCESS if no errors are found. SPV_ERROR_INVALID_CFG otherwise
 spv_result_t PerformCfgChecks(ValidationState_t& _);
 
+/// @brief Updates the use vectors of all instructions that can be referenced
+///
+/// This function will update the vector which define where an instruction was
+/// referenced in the binary.
+///
+/// @param[in] _ the validation state of the module
+///
+/// @return SPV_SUCCESS if no errors are found.
+spv_result_t UpdateIdUse(ValidationState_t& _);
+
 /// @brief This function checks all ID definitions dominate their use in the
 /// CFG.
 ///
@@ -156,7 +155,6 @@ spv_result_t InstructionPass(ValidationState_t& _,
 /// @param[in] operandTable table of specified operands
 /// @param[in] usedefs use-def info from module parsing
 /// @param[in,out] position current position in the stream
-/// @param[out] pDiag contains diagnostic on failure
 ///
 /// @return result code
 spv_result_t spvValidateInstructionIDs(const spv_instruction_t* pInsts,
@@ -165,8 +163,7 @@ spv_result_t spvValidateInstructionIDs(const spv_instruction_t* pInsts,
                                        const spv_operand_table operandTable,
                                        const spv_ext_inst_table extInstTable,
                                        const libspirv::ValidationState_t& state,
-                                       spv_position position,
-                                       spv_diagnostic* pDiag);
+                                       spv_position position);
 
 /// @brief Validate the ID's within a SPIR-V binary
 ///
@@ -176,7 +173,7 @@ spv_result_t spvValidateInstructionIDs(const spv_instruction_t* pInsts,
 /// @param[in] opcodeTable table of specified Opcodes
 /// @param[in] operandTable table of specified operands
 /// @param[in,out] position current word in the binary
-/// @param[out] pDiagnostic contains diagnostic on failure
+/// @param[in] consumer message consumer callback
 ///
 /// @return result code
 spv_result_t spvValidateIDs(const spv_instruction_t* pInstructions,
@@ -184,9 +181,7 @@ spv_result_t spvValidateIDs(const spv_instruction_t* pInstructions,
                             const spv_opcode_table opcodeTable,
                             const spv_operand_table operandTable,
                             const spv_ext_inst_table extInstTable,
-                            spv_position position, spv_diagnostic* pDiagnostic);
-
-#define spvCheckReturn(expression) \
-  if (spv_result_t error = (expression)) return error;
+                            spv_position position,
+                            const spvtools::MessageConsumer& consumer);
 
 #endif  // LIBSPIRV_VALIDATE_H_

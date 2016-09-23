@@ -1,42 +1,46 @@
 // Copyright (c) 2016 Google Inc.
 //
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and/or associated documentation files (the
-// "Materials"), to deal in the Materials without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Materials, and to
-// permit persons to whom the Materials are furnished to do so, subject to
-// the following conditions:
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Materials.
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// MODIFICATIONS TO THIS FILE MAY MEAN IT NO LONGER ACCURATELY REFLECTS
-// KHRONOS STANDARDS. THE UNMODIFIED, NORMATIVE VERSIONS OF KHRONOS
-// SPECIFICATIONS AND HEADER INFORMATION ARE LOCATED AT
-//    https://www.khronos.org/registry/
-//
-// THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-// MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <gtest/gtest.h>
+#include <algorithm>
 
+#include "opt/build_module.h"
 #include "opt/libspirv.hpp"
 
 namespace {
 
 using namespace spvtools;
 
+void DoRoundTripCheck(const std::string& text) {
+  SpvTools t(SPV_ENV_UNIVERSAL_1_1);
+  std::unique_ptr<ir::Module> module =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, text);
+  ASSERT_NE(nullptr, module) << "Failed to assemble\n" << text;
+
+  std::vector<uint32_t> binary;
+  module->ToBinary(&binary, /* skip_nop = */ false);
+
+  std::string disassembled_text;
+  EXPECT_TRUE(t.Disassemble(binary, &disassembled_text));
+  EXPECT_EQ(text, disassembled_text);
+}
+
 TEST(IrBuilder, RoundTrip) {
   // #version 310 es
   // int add(int a, int b) { return a + b; }
   // void main() { add(1, 2); }
-  const std::string text =
+  DoRoundTripCheck(
       // clang-format off
                "OpCapability Shader\n"
           "%1 = OpExtInstImport \"GLSL.std.450\"\n"
@@ -75,25 +79,25 @@ TEST(IrBuilder, RoundTrip) {
          "%19 = OpLoad %int %b\n"
          "%20 = OpIAdd %int %18 %19\n"
                "OpReturnValue %20\n"
-               "OpFunctionEnd\n";
+               "OpFunctionEnd\n");
   // clang-format on
+}
 
-  SpvTools t(SPV_ENV_UNIVERSAL_1_1);
-  std::unique_ptr<ir::Module> module = t.BuildModule(text);
-  ASSERT_NE(nullptr, module);
+TEST(IrBuilder, RoundTripIncompleteBasicBlock) {
+  DoRoundTripCheck(
+      "%2 = OpFunction %1 None %3\n"
+      "%4 = OpLabel\n"
+      "OpNop\n");
+}
 
-  std::vector<uint32_t> binary;
-  module->ToBinary(&binary, /* skip_nop = */ false);
-
-  std::string disassembled_text;
-  EXPECT_EQ(SPV_SUCCESS, t.Disassemble(binary, &disassembled_text));
-  EXPECT_EQ(text, disassembled_text);
+TEST(IrBuilder, RoundTripIncompleteFunction) {
+  DoRoundTripCheck("%2 = OpFunction %1 None %3\n");
 }
 
 TEST(IrBuilder, KeepLineDebugInfo) {
   // #version 310 es
   // void main() {}
-  const std::string text =
+  DoRoundTripCheck(
       // clang-format off
                "OpCapability Shader\n"
           "%1 = OpExtInstImport \"GLSL.std.450\"\n"
@@ -115,19 +119,8 @@ TEST(IrBuilder, KeepLineDebugInfo) {
                "OpLine %3 4 4\n"
                "OpNoLine\n"
                "OpReturn\n"
-               "OpFunctionEnd\n";
+               "OpFunctionEnd\n");
   // clang-format on
-
-  SpvTools t(SPV_ENV_UNIVERSAL_1_1);
-  std::unique_ptr<ir::Module> module = t.BuildModule(text);
-  ASSERT_NE(nullptr, module);
-
-  std::vector<uint32_t> binary;
-  module->ToBinary(&binary, /* skip_nop = */ false);
-
-  std::string disassembled_text;
-  EXPECT_EQ(SPV_SUCCESS, t.Disassemble(binary, &disassembled_text));
-  EXPECT_EQ(text, disassembled_text);
 }
 
 TEST(IrBuilder, LocalGlobalVariables) {
@@ -145,7 +138,7 @@ TEST(IrBuilder, LocalGlobalVariables) {
   // void main() {
   //   float lv1 = gv1 - gv2;
   // }
-  const std::string text =
+  DoRoundTripCheck(
       // clang-format off
                "OpCapability Shader\n"
           "%1 = OpExtInstImport \"GLSL.std.450\"\n"
@@ -196,19 +189,112 @@ TEST(IrBuilder, LocalGlobalVariables) {
          "%29 = OpLoad %float %lv2\n"
          "%30 = OpFDiv %float %28 %29\n"
                "OpReturnValue %30\n"
-               "OpFunctionEnd\n";
+               "OpFunctionEnd\n");
+  // clang-format on
+}
+
+TEST(IrBuilder, OpUndefOutsideFunction) {
+  // #version 310 es
+  // void main() {}
+  const std::string text =
+      // clang-format off
+               "OpMemoryModel Logical GLSL450\n"
+        "%int = OpTypeInt 32 1\n"
+       "%uint = OpTypeInt 32 0\n"
+      "%float = OpTypeFloat 32\n"
+          "%4 = OpUndef %int\n"
+          "%5 = OpConstant %int 10\n"
+          "%6 = OpUndef %uint\n"
+       "%bool = OpTypeBool\n"
+          "%8 = OpUndef %float\n"
+     "%double = OpTypeFloat 64\n";
   // clang-format on
 
   SpvTools t(SPV_ENV_UNIVERSAL_1_1);
-  std::unique_ptr<ir::Module> module = t.BuildModule(text);
+  std::unique_ptr<ir::Module> module =
+      BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, text);
   ASSERT_NE(nullptr, module);
+
+  const auto opundef_count = std::count_if(
+      module->types_values_begin(), module->types_values_end(),
+      [](const ir::Instruction& inst) { return inst.opcode() == SpvOpUndef; });
+  EXPECT_EQ(3, opundef_count);
 
   std::vector<uint32_t> binary;
   module->ToBinary(&binary, /* skip_nop = */ false);
 
   std::string disassembled_text;
-  EXPECT_EQ(SPV_SUCCESS, t.Disassemble(binary, &disassembled_text));
+  EXPECT_TRUE(t.Disassemble(binary, &disassembled_text));
   EXPECT_EQ(text, disassembled_text);
+}
+
+TEST(IrBuilder, OpUndefInBasicBlock) {
+  DoRoundTripCheck(
+      // clang-format off
+               "OpMemoryModel Logical GLSL450\n"
+               "OpName %main \"main\"\n"
+       "%void = OpTypeVoid\n"
+       "%uint = OpTypeInt 32 0\n"
+     "%double = OpTypeFloat 64\n"
+          "%5 = OpTypeFunction %void\n"
+       "%main = OpFunction %void None %5\n"
+          "%6 = OpLabel\n"
+          "%7 = OpUndef %uint\n"
+          "%8 = OpUndef %double\n"
+               "OpReturn\n"
+               "OpFunctionEnd\n");
+  // clang-format on
+}
+
+TEST(IrBuilder, KeepLineDebugInfoBeforeType) {
+  DoRoundTripCheck(
+      // clang-format off
+               "OpCapability Shader\n"
+               "OpMemoryModel Logical GLSL450\n"
+          "%1 = OpString \"minimal.vert\"\n"
+               "OpLine %1 1 1\n"
+               "OpNoLine\n"
+       "%void = OpTypeVoid\n"
+               "OpLine %1 2 2\n"
+          "%3 = OpTypeFunction %void\n");
+  // clang-format on
+}
+
+TEST(IrBuilder, KeepLineDebugInfoBeforeLabel) {
+  DoRoundTripCheck(
+      // clang-format off
+               "OpCapability Shader\n"
+               "OpMemoryModel Logical GLSL450\n"
+          "%1 = OpString \"minimal.vert\"\n"
+       "%void = OpTypeVoid\n"
+          "%3 = OpTypeFunction %void\n"
+       "%4 = OpFunction %void None %3\n"
+          "%5 = OpLabel\n"
+   "OpBranch %6\n"
+               "OpLine %1 1 1\n"
+               "OpLine %1 2 2\n"
+          "%6 = OpLabel\n"
+               "OpBranch %7\n"
+               "OpLine %1 100 100\n"
+          "%7 = OpLabel\n"
+               "OpReturn\n"
+               "OpFunctionEnd\n");
+  // clang-format on
+}
+
+TEST(IrBuilder, KeepLineDebugInfoBeforeFunctionEnd) {
+  DoRoundTripCheck(
+      // clang-format off
+               "OpCapability Shader\n"
+               "OpMemoryModel Logical GLSL450\n"
+          "%1 = OpString \"minimal.vert\"\n"
+       "%void = OpTypeVoid\n"
+          "%3 = OpTypeFunction %void\n"
+       "%4 = OpFunction %void None %3\n"
+               "OpLine %1 1 1\n"
+               "OpLine %1 2 2\n"
+               "OpFunctionEnd\n");
+  // clang-format on
 }
 
 }  // anonymous namespace
