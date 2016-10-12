@@ -12,17 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "libspirv.hpp"
+#include "spirv-tools/libspirv.hpp"
 
-#include "ir_loader.h"
-#include "make_unique.h"
-#include "message.h"
 #include "table.h"
 
 namespace spvtools {
 
 // Structs for holding the data members for SpvTools.
-struct SpvTools::Impl {
+struct SpirvTools::Impl {
   explicit Impl(spv_target_env env) : context(spvContextCreate(env)) {
     // The default consumer in spv_context_t is a null consumer, which provides
     // equivalent functionality (from the user's perspective) as a real consumer
@@ -33,19 +30,24 @@ struct SpvTools::Impl {
   spv_context context;  // C interface context object.
 };
 
-SpvTools::SpvTools(spv_target_env env) : impl_(new Impl(env)) {}
+SpirvTools::SpirvTools(spv_target_env env) : impl_(new Impl(env)) {}
 
-SpvTools::~SpvTools() {}
+SpirvTools::~SpirvTools() {}
 
-void SpvTools::SetMessageConsumer(MessageConsumer consumer) {
+void SpirvTools::SetMessageConsumer(MessageConsumer consumer) {
   SetContextMessageConsumer(impl_->context, std::move(consumer));
 }
 
-bool SpvTools::Assemble(const std::string& text,
-                        std::vector<uint32_t>* binary) const {
+bool SpirvTools::Assemble(const std::string& text,
+                          std::vector<uint32_t>* binary) const {
+  return Assemble(text.data(), text.size(), binary);
+}
+
+bool SpirvTools::Assemble(const char* text, const size_t text_size,
+                          std::vector<uint32_t>* binary) const {
   spv_binary spvbinary = nullptr;
-  spv_result_t status = spvTextToBinary(impl_->context, text.data(),
-                                        text.size(), &spvbinary, nullptr);
+  spv_result_t status =
+      spvTextToBinary(impl_->context, text, text_size, &spvbinary, nullptr);
   if (status == SPV_SUCCESS) {
     binary->assign(spvbinary->code, spvbinary->code + spvbinary->wordCount);
   }
@@ -53,11 +55,16 @@ bool SpvTools::Assemble(const std::string& text,
   return status == SPV_SUCCESS;
 }
 
-bool SpvTools::Disassemble(const std::vector<uint32_t>& binary,
-                           std::string* text, uint32_t options) const {
+bool SpirvTools::Disassemble(const std::vector<uint32_t>& binary,
+                             std::string* text, uint32_t options) const {
+  return Disassemble(binary.data(), binary.size(), text, options);
+}
+
+bool SpirvTools::Disassemble(const uint32_t* binary, const size_t binary_size,
+                             std::string* text, uint32_t options) const {
   spv_text spvtext = nullptr;
-  spv_result_t status = spvBinaryToText(
-      impl_->context, binary.data(), binary.size(), options, &spvtext, nullptr);
+  spv_result_t status = spvBinaryToText(impl_->context, binary, binary_size,
+                                        options, &spvtext, nullptr);
   if (status == SPV_SUCCESS) {
     text->assign(spvtext->str, spvtext->str + spvtext->length);
   }
@@ -65,9 +72,14 @@ bool SpvTools::Disassemble(const std::vector<uint32_t>& binary,
   return status == SPV_SUCCESS;
 }
 
-bool SpvTools::Validate(const std::vector<uint32_t>& binary) const {
-  spv_const_binary_t b = {binary.data(), binary.size()};
-  return spvValidate(impl_->context, &b, nullptr) == SPV_SUCCESS;
+bool SpirvTools::Validate(const std::vector<uint32_t>& binary) const {
+  return Validate(binary.data(), binary.size());
+}
+
+bool SpirvTools::Validate(const uint32_t* binary,
+                          const size_t binary_size) const {
+  return spvValidateBinary(impl_->context, binary, binary_size, nullptr) ==
+         SPV_SUCCESS;
 }
 
 }  // namespace spvtools

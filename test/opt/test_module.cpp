@@ -17,9 +17,10 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "message.h"
 #include "opt/build_module.h"
-#include "opt/libspirv.hpp"
 #include "opt/module.h"
+#include "spirv-tools/libspirv.hpp"
 
 #include "module_utils.h"
 
@@ -44,8 +45,7 @@ TEST(ModuleTest, SetIdBound) {
 // Returns a module formed by assembling the given text,
 // then loading the result.
 inline std::unique_ptr<Module> BuildModule(std::string text) {
-  return spvtools::BuildModule(SPV_ENV_UNIVERSAL_1_1, spvtools::IgnoreMessage,
-                               text);
+  return spvtools::BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, text);
 }
 
 TEST(ModuleTest, ComputeIdBound) {

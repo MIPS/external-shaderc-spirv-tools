@@ -23,10 +23,10 @@
 #include <gtest/gtest.h>
 
 #include "opt/build_module.h"
-#include "opt/libspirv.hpp"
 #include "opt/make_unique.h"
 #include "opt/pass_manager.h"
 #include "opt/passes.h"
+#include "spirv-tools/libspirv.hpp"
 
 namespace spvtools {
 
@@ -41,7 +41,7 @@ template <typename TestT>
 class PassTest : public TestT {
  public:
   PassTest()
-      : consumer_(IgnoreMessage),
+      : consumer_(nullptr),
         tools_(SPV_ENV_UNIVERSAL_1_1),
         manager_(new opt::PassManager()) {}
 
@@ -119,7 +119,7 @@ class PassTest : public TestT {
     assert(manager_->NumPasses());
 
     std::unique_ptr<ir::Module> module =
-        BuildModule(SPV_ENV_UNIVERSAL_1_1, IgnoreMessage, original);
+        BuildModule(SPV_ENV_UNIVERSAL_1_1, nullptr, original);
     ASSERT_NE(nullptr, module);
 
     manager_->Run(module.get());
@@ -134,7 +134,7 @@ class PassTest : public TestT {
 
  private:
   MessageConsumer consumer_;  // Message consumer.
-  SpvTools tools_;  // An instance for calling SPIRV-Tools functionalities.
+  SpirvTools tools_;  // An instance for calling SPIRV-Tools functionalities.
   std::unique_ptr<opt::PassManager> manager_;  // The pass manager.
 };
 

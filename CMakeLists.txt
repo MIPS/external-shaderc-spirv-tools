@@ -152,9 +152,15 @@ add_subdirectory(source)
 add_subdirectory(tools)
 
 add_subdirectory(test)
+add_subdirectory(examples)
 
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/libspirv.h
-  DESTINATION include/spirv-tools/)
+install(
+  FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/libspirv.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/libspirv.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/optimizer.hpp
+  DESTINATION
+    include/spirv-tools/)
 
 add_test(NAME spirv-tools-copyrights
          COMMAND ${PYTHON_EXECUTABLE} utils/check_copyright.py
