@@ -1,4 +1,3 @@
-
 // Copyright (c) 2015-2016 The Khronos Group Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -156,10 +155,12 @@ Block& operator>>(Block& lhs, Block& successor) {
 const char* header(SpvCapability cap) {
   static const char* shader_header =
       "OpCapability Shader\n"
+      "OpCapability Linkage\n"
       "OpMemoryModel Logical GLSL450\n";
 
   static const char* kernel_header =
       "OpCapability Kernel\n"
+      "OpCapability Linkage\n"
       "OpMemoryModel Logical OpenCL\n";
 
   return (cap == SpvCapabilityShader) ? shader_header : kernel_header;
@@ -194,6 +195,7 @@ TEST_P(ValidateCFG, LoopReachableFromEntryButNeverLeadingToReturn) {
   // https://github.com/KhronosGroup/SPIRV-Tools/issues/279
   string str = R"(
            OpCapability Shader
+           OpCapability Linkage
            OpMemoryModel Logical GLSL450
 
            OpName %entry "entry"
@@ -231,6 +233,7 @@ TEST_P(ValidateCFG, LoopUnreachableFromEntryButLeadingToReturn) {
   // post-dominators.
   string str = R"(
            OpCapability Shader
+           OpCapability Linkage
            OpMemoryModel Logical GLSL450
 
            OpName %entry "entry"
@@ -1294,6 +1297,49 @@ TEST_P(ValidateCFG, SingleLatchBlockHeaderContinueTargetIsItselfGood) {
   CompileSuccessfully(str);
   EXPECT_EQ(SPV_SUCCESS, ValidateInstructions()) << str
                                                  << getDiagnosticString();
+}
+
+// Unit test to check the case where a basic block is the entry block of 2
+// different constructs. In this case, the basic block is the entry block of a
+// continue construct as well as a selection construct. See issue# 517 for more
+// details.
+TEST_F(ValidateCFG, BasicBlockIsEntryBlockOfTwoConstructsGood) {
+  std::string spirv = R"(
+               OpCapability Shader
+               OpCapability Linkage
+               OpMemoryModel Logical GLSL450
+       %void = OpTypeVoid
+       %bool = OpTypeBool
+        %int = OpTypeInt 32 1
+  %void_func = OpTypeFunction %void
+      %int_0 = OpConstant %int 0
+    %testfun = OpFunction %void None %void_func
+    %label_1 = OpLabel
+               OpBranch %start
+      %start = OpLabel
+       %cond = OpSLessThan %bool %int_0 %int_0
+       ;
+       ; Note: In this case, the "target" block is both the entry block of
+       ;       the continue construct of the loop as well as the entry block of
+       ;       the selection construct.
+       ;
+               OpLoopMerge %loop_merge %target None
+               OpBranchConditional %cond %target %loop_merge
+ %loop_merge = OpLabel
+               OpReturn
+     %target = OpLabel
+               OpSelectionMerge %selection_merge None
+               OpBranchConditional %cond %do_stuff %do_other_stuff
+     %do_other_stuff = OpLabel
+               OpBranch %selection_merge
+     %selection_merge = OpLabel
+               OpBranch %start
+         %do_stuff = OpLabel
+               OpBranch %selection_merge
+               OpFunctionEnd
+  )";
+  CompileSuccessfully(spirv);
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
 }
 
 /// TODO(umar): Switch instructions

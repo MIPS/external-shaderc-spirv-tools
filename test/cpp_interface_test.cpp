@@ -173,8 +173,10 @@ TEST(CppInterface, DisassembleWithWrongTargetEnv) {
 }
 
 TEST(CppInterface, SuccessfulValidation) {
-  const std::string input_text =
-      "OpCapability Shader\nOpMemoryModel Logical GLSL450";
+  const std::string input_text = R"(
+    OpCapability Shader
+    OpCapability Linkage
+    OpMemoryModel Logical GLSL450)";
   SpirvTools t(SPV_ENV_UNIVERSAL_1_1);
   int invocation_count = 0;
   t.SetMessageConsumer([&invocation_count](spv_message_level_t, const char*,
@@ -189,8 +191,10 @@ TEST(CppInterface, SuccessfulValidation) {
 }
 
 TEST(CppInterface, ValidateOverloads) {
-  const std::string input_text =
-      "OpCapability Shader\nOpMemoryModel Logical GLSL450";
+  const std::string input_text = R"(
+    OpCapability Shader
+    OpCapability Linkage
+    OpMemoryModel Logical GLSL450)";
   SpirvTools t(SPV_ENV_UNIVERSAL_1_1);
   std::vector<uint32_t> binary;
   EXPECT_TRUE(t.Assemble(input_text, &binary));
@@ -263,7 +267,7 @@ TEST(CppInterface, OptimizeMulitplePasses) {
 
   const char* expected_text =
       "%bool = OpTypeBool\n"
-      "%1 = OpConstantTrue %bool\n";
+      "%true = OpConstantTrue %bool\n";
 
   CheckOptimization(original_text, expected_text, o);
 }

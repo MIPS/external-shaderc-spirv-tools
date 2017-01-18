@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "assembly_grammar.h"
+#include "decoration.h"
 #include "diagnostic.h"
 #include "enum_set.h"
 #include "spirv-tools/libspirv.h"
@@ -129,6 +130,16 @@ class ValidationState_t {
   std::vector<uint32_t>& entry_points() { return entry_points_; }
   const std::vector<uint32_t>& entry_points() const { return entry_points_; }
 
+  /// Inserts an <id> to the set of functions that are target of OpFunctionCall.
+  void AddFunctionCallTarget(const uint32_t id) {
+    function_call_targets_.insert(id);
+  }
+
+  /// Returns whether or not a function<id> is the target of OpFunctionCall.
+  bool IsFunctionCallTarget(const uint32_t id) {
+    return (function_call_targets_.find(id) != function_call_targets_.end());
+  }
+
   /// Registers the capability and its dependent capabilities
   void RegisterCapability(SpvCapability cap);
 
@@ -166,6 +177,37 @@ class ValidationState_t {
 
   /// Registers the instruction
   void RegisterInstruction(const spv_parsed_instruction_t& inst);
+
+  /// Registers the decoration for the given <id>
+  void RegisterDecorationForId(uint32_t id, const Decoration& dec) {
+    id_decorations_[id].push_back(dec);
+  }
+
+  /// Registers the list of decorations for the given <id>
+  template <class InputIt>
+  void RegisterDecorationsForId(uint32_t id, InputIt begin, InputIt end) {
+    std::vector<Decoration>& cur_decs = id_decorations_[id];
+    cur_decs.insert(cur_decs.end(), begin, end);
+  }
+
+  /// Registers the list of decorations for the given member of the given
+  /// structure.
+  template <class InputIt>
+  void RegisterDecorationsForStructMember(uint32_t struct_id,
+                                          uint32_t member_index, InputIt begin,
+                                          InputIt end) {
+    RegisterDecorationsForId(struct_id, begin, end);
+    for (auto& decoration : id_decorations_[struct_id]) {
+      decoration.set_struct_member_index(member_index);
+    }
+  }
+
+  /// Returns all the decorations for the given <id>. If no decorations exist
+  /// for the <id>, it registers an empty vector for it in the map and
+  /// returns the empty vector.
+  std::vector<Decoration>& id_decorations(uint32_t id) {
+    return id_decorations_[id];
+  }
 
   /// Finds id's def, if it exists.  If found, returns the definition otherwise
   /// nullptr
@@ -255,6 +297,9 @@ class ValidationState_t {
   /// IDs that are entry points, ie, arguments to OpEntryPoint.
   std::vector<uint32_t> entry_points_;
 
+  /// Functions IDs that are target of OpFunctionCall.
+  std::unordered_set<uint32_t> function_call_targets_;
+
   /// ID Bound from the Header
   uint32_t id_bound_;
 
@@ -266,6 +311,9 @@ class ValidationState_t {
 
   /// Structure Nesting Depth
   std::unordered_map<uint32_t, uint32_t> struct_nesting_depth_;
+
+  /// Stores the list of decorations for a given <id>
+  std::unordered_map<uint32_t, std::vector<Decoration>> id_decorations_;
 
   AssemblyGrammar grammar_;
 

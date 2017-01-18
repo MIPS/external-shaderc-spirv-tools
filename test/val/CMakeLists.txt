@@ -75,3 +75,15 @@ add_spvtools_unittest(TARGET val_limits
   LIBS ${SPIRV_TOOLS}
 )
 
+add_spvtools_unittest(TARGET val_validation_state
+	SRCS val_validation_state_test.cpp
+       ${VAL_TEST_COMMON_SRCS}
+  LIBS ${SPIRV_TOOLS}
+)
+
+add_spvtools_unittest(TARGET val_decoration
+	SRCS val_decoration_test.cpp
+       ${VAL_TEST_COMMON_SRCS}
+  LIBS ${SPIRV_TOOLS}
+)
+
