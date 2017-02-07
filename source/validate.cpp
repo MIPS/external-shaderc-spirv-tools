@@ -121,7 +121,13 @@ spv_result_t ProcessInstruction(void* user_data,
   ValidationState_t& _ = *(reinterpret_cast<ValidationState_t*>(user_data));
   _.increment_instruction_count();
   if (static_cast<SpvOp>(inst->opcode) == SpvOpEntryPoint) {
-    _.entry_points().push_back(inst->words[2]);
+    const auto entry_point = inst->words[2];
+    _.RegisterEntryPointId(entry_point);
+    // Operand 3 and later are the <id> of interfaces for the entry point.
+    for (int i = 3; i < inst->num_operands; ++i) {
+      _.RegisterInterfaceForEntryPoint(entry_point,
+                                       inst->words[inst->operands[i].offset]);
+    }
   }
   if (static_cast<SpvOp>(inst->opcode) == SpvOpFunctionCall) {
     _.AddFunctionCallTarget(inst->words[3]);
@@ -238,6 +244,7 @@ spv_result_t ValidateBinaryUsingContextAndValidationState(
   if (auto error = PerformCfgChecks(*vstate)) return error;
   if (auto error = UpdateIdUse(*vstate)) return error;
   if (auto error = CheckIdDefinitionDominateUse(*vstate)) return error;
+  if (auto error = ValidateDecorations(*vstate))  return error;
 
   // Entry point validation. Based on 2.16.1 (Universal Validation Rules) of the
   // SPIRV spec:

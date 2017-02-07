@@ -61,8 +61,18 @@ See [`syntax.md`](syntax.md) for the assembly language syntax.
 
 ### Validator
 
-*Warning:* The validator is incomplete.
-Check the [CHANGES](CHANGES) file for reports on completed work, and
+The validator checks validation rules described by the SPIR-V specification.
+
+Khronos recommends that tools that create or transform SPIR-V modules use the
+validator to ensure their outputs are valid, and that tools that consume SPIR-V
+modules optionally use the validator to protect themselves from bad inputs.
+This is especially encouraged for debug and development scenarios.
+
+The validator has one-sided error: it will only return an error when it has
+implemented a rule check and the module violates that rule.
+
+The validator is incomplete.
+See the [CHANGES](CHANGES) file for reports on completed work, and
 the [Validator
 sub-project](https://github.com/KhronosGroup/SPIRV-Tools/projects/1) for planned
 and in-progress work.
@@ -314,6 +324,13 @@ This is experimental.
     ```
     export LESSOPEN='| spirv-lesspipe.sh "%s" --no-color --raw-id'
     ```
+
+* [vim-spirv](https://github.com/kbenzie/vim-spirv) - A vim plugin which
+  supports automatic disassembly of `.spv` files using the `:edit` command and
+  assembly using the `:write` command. The plugin also provides additional
+  features which include; syntax highlighting; highlighting of all ID's matching
+  the ID under the cursor; and highlighting errors where the `Instruction`
+  operand of `OpExtInst` is used without an appropriate `OpExtInstImport`.
 
 * `50spirv-tools.el` - Automatically disassembles '.spv' binary files when
   loaded into the emacs text editor, and re-assembles them when saved,
