@@ -170,7 +170,7 @@ const char* types_consts() {
   static const char* types =
       "%voidt   = OpTypeVoid\n"
       "%boolt   = OpTypeBool\n"
-      "%intt    = OpTypeInt 32 1\n"
+      "%intt    = OpTypeInt 32 0\n"
       "%one     = OpConstant %intt 1\n"
       "%two     = OpConstant %intt 2\n"
       "%ptrt    = OpTypePointer Function %intt\n"
@@ -623,6 +623,38 @@ TEST_P(ValidateCFG, HeaderDoesntDominatesMergeBad) {
                      ".\\[merge\\]"));
   } else {
     ASSERT_EQ(SPV_SUCCESS, ValidateInstructions());
+  }
+}
+
+TEST_P(ValidateCFG, HeaderDoesntStrictlyDominateMergeBad) {
+  // If a merge block is reachable, then it must be strictly dominated by
+  // its header block.
+  bool is_shader = GetParam() == SpvCapabilityShader;
+  Block head("head", SpvOpBranchConditional);
+  Block exit("exit", SpvOpReturn);
+
+  head.SetBody("%cond = OpSLessThan %intt %one %two\n");
+
+  if (is_shader) head.AppendBody("OpSelectionMerge %head None\n");
+
+  string str = header(GetParam()) +
+               nameOps("head", "exit", make_pair("func", "Main")) +
+               types_consts() + "%func    = OpFunction %voidt None %funct\n";
+
+  str += head >> vector<Block>({exit, exit});
+  str += exit;
+  str += "OpFunctionEnd\n";
+
+  CompileSuccessfully(str);
+  if (is_shader) {
+    ASSERT_EQ(SPV_ERROR_INVALID_CFG, ValidateInstructions());
+    EXPECT_THAT(
+        getDiagnosticString(),
+        MatchesRegex("The selection construct with the selection header "
+                     ".\\[head\\] does not strictly dominate the merge block "
+                     ".\\[head\\]"));
+  } else {
+    ASSERT_EQ(SPV_SUCCESS, ValidateInstructions()) << str;
   }
 }
 
