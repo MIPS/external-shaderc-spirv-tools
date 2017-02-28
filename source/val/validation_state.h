@@ -54,10 +54,20 @@ enum ModuleLayoutSection {
 /// This class manages the state of the SPIR-V validation as it is being parsed.
 class ValidationState_t {
  public:
-  ValidationState_t(const spv_const_context context);
+  // Features that can optionally be turned on by a capability.
+  struct Feature {
+    bool declare_int16_type = false;    // Allow OpTypeInt with 16 bit width?
+    bool declare_float16_type = false;  // Allow OpTypeFloat with 16 bit width?
+  };
+
+  ValidationState_t(const spv_const_context context,
+                    const spv_const_validator_options opt);
 
   /// Returns the context
   spv_const_context context() const { return context_; }
+
+  /// Returns the command line options
+  spv_const_validator_options options() const { return options_; }
 
   /// Forward declares the id in the module
   spv_result_t ForwardDeclareId(uint32_t id);
@@ -290,10 +300,17 @@ class ValidationState_t {
   bool IsStructTypeWithBuiltInMember(uint32_t id) const {
     return (builtin_structs_.find(id) != builtin_structs_.end());
   }
+
+  // Returns the state of optional features.
+  const Feature& features() const { return features_; }
+
  private:
   ValidationState_t(const ValidationState_t&);
 
   const spv_const_context context_;
+
+  /// Stores the Validator command line options. Must be a valid options object.
+  const spv_const_validator_options options_;
 
   /// Tracks the number of instructions evaluated by the validator
   int instruction_counter_;
@@ -361,6 +378,10 @@ class ValidationState_t {
 
   /// NOTE: See correspoding getter functions
   bool in_function_;
+
+  // The state of optional features.  These are determined by capabilities
+  // declared by the module.
+  Feature features_;
 };
 
 }  /// namespace libspirv

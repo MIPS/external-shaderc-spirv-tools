@@ -16,6 +16,7 @@
 
 #include <cassert>
 
+#include "opcode.h"
 #include "val/basic_block.h"
 #include "val/construct.h"
 #include "val/function.h"
@@ -74,39 +75,12 @@ bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
       }
       break;
     case kLayoutTypes:
+      if (spvOpcodeGeneratesType(op) || spvOpcodeIsConstant(op)) {
+        out = true;
+        break;
+      }
       switch (op) {
-        case SpvOpTypeVoid:
-        case SpvOpTypeBool:
-        case SpvOpTypeInt:
-        case SpvOpTypeFloat:
-        case SpvOpTypeVector:
-        case SpvOpTypeMatrix:
-        case SpvOpTypeImage:
-        case SpvOpTypeSampler:
-        case SpvOpTypeSampledImage:
-        case SpvOpTypeArray:
-        case SpvOpTypeRuntimeArray:
-        case SpvOpTypeStruct:
-        case SpvOpTypeOpaque:
-        case SpvOpTypePointer:
-        case SpvOpTypeFunction:
-        case SpvOpTypeEvent:
-        case SpvOpTypeDeviceEvent:
-        case SpvOpTypeReserveId:
-        case SpvOpTypeQueue:
-        case SpvOpTypePipe:
         case SpvOpTypeForwardPointer:
-        case SpvOpConstantTrue:
-        case SpvOpConstantFalse:
-        case SpvOpConstant:
-        case SpvOpConstantComposite:
-        case SpvOpConstantSampler:
-        case SpvOpConstantNull:
-        case SpvOpSpecConstantTrue:
-        case SpvOpSpecConstantFalse:
-        case SpvOpSpecConstant:
-        case SpvOpSpecConstantComposite:
-        case SpvOpSpecConstantOp:
         case SpvOpVariable:
         case SpvOpLine:
         case SpvOpNoLine:
@@ -119,6 +93,10 @@ bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
     case kLayoutFunctionDeclarations:
     case kLayoutFunctionDefinitions:
       // NOTE: These instructions should NOT be in these layout sections
+      if (spvOpcodeGeneratesType(op) || spvOpcodeIsConstant(op)) {
+        out = false;
+        break;
+      }
       switch (op) {
         case SpvOpCapability:
         case SpvOpExtension:
@@ -137,38 +115,7 @@ bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
         case SpvOpGroupDecorate:
         case SpvOpGroupMemberDecorate:
         case SpvOpDecorationGroup:
-        case SpvOpTypeVoid:
-        case SpvOpTypeBool:
-        case SpvOpTypeInt:
-        case SpvOpTypeFloat:
-        case SpvOpTypeVector:
-        case SpvOpTypeMatrix:
-        case SpvOpTypeImage:
-        case SpvOpTypeSampler:
-        case SpvOpTypeSampledImage:
-        case SpvOpTypeArray:
-        case SpvOpTypeRuntimeArray:
-        case SpvOpTypeStruct:
-        case SpvOpTypeOpaque:
-        case SpvOpTypePointer:
-        case SpvOpTypeFunction:
-        case SpvOpTypeEvent:
-        case SpvOpTypeDeviceEvent:
-        case SpvOpTypeReserveId:
-        case SpvOpTypeQueue:
-        case SpvOpTypePipe:
         case SpvOpTypeForwardPointer:
-        case SpvOpConstantTrue:
-        case SpvOpConstantFalse:
-        case SpvOpConstant:
-        case SpvOpConstantComposite:
-        case SpvOpConstantSampler:
-        case SpvOpConstantNull:
-        case SpvOpSpecConstantTrue:
-        case SpvOpSpecConstantFalse:
-        case SpvOpSpecConstant:
-        case SpvOpSpecConstantComposite:
-        case SpvOpSpecConstantOp:
           out = false;
           break;
       default:
@@ -182,8 +129,10 @@ bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
 
 }  // anonymous namespace
 
-ValidationState_t::ValidationState_t(const spv_const_context ctx)
+ValidationState_t::ValidationState_t(const spv_const_context ctx,
+                                     const spv_const_validator_options opt)
     : context_(ctx),
+      options_(opt),
       instruction_counter_(0),
       unresolved_forward_ids_{},
       operand_names_{},
@@ -198,7 +147,9 @@ ValidationState_t::ValidationState_t(const spv_const_context ctx)
       grammar_(ctx),
       addressing_model_(SpvAddressingModelLogical),
       memory_model_(SpvMemoryModelSimple),
-      in_function_(false) {}
+      in_function_(false) {
+  assert(opt && "Validator options may not be Null.");
+}
 
 spv_result_t ValidationState_t::ForwardDeclareId(uint32_t id) {
   unresolved_forward_ids_.insert(id);
@@ -331,6 +282,24 @@ void ValidationState_t::RegisterCapability(SpvCapability cap) {
       grammar_.lookupOperand(SPV_OPERAND_TYPE_CAPABILITY, cap, &desc)) {
     desc->capabilities.ForEach(
         [this](SpvCapability c) { RegisterCapability(c); });
+  }
+
+  switch (cap) {
+    case SpvCapabilityInt16:
+      features_.declare_int16_type = true;
+      break;
+    case SpvCapabilityFloat16:
+    case SpvCapabilityFloat16Buffer:
+      features_.declare_float16_type = true;
+      break;
+    case SpvCapabilityStorageUniformBufferBlock16:
+    case SpvCapabilityStorageUniform16:
+    case SpvCapabilityStoragePushConstant16:
+    case SpvCapabilityStorageInputOutput16:
+      features_.declare_int16_type = true;
+      features_.declare_float16_type = true;
+    default:
+      break;
   }
 }
 
