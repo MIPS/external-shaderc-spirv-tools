@@ -125,9 +125,9 @@ TEST_F(ValidateIdWithMessage, OpMemberNameTypeBad) {
 }
 TEST_F(ValidateIdWithMessage, OpMemberNameMemberBad) {
   string spirv = kGLSL450MemoryModel + R"(
-     OpMemberName %2 1 "foo"
-%1 = OpTypeInt 32 0
-%2 = OpTypeStruct %1)";
+     OpMemberName %1 1 "foo"
+%2 = OpTypeInt 32 0
+%1 = OpTypeStruct %2)";
   CompileSuccessfully(spirv.c_str());
   EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
   EXPECT_THAT(getDiagnosticString(),
@@ -145,6 +145,7 @@ TEST_F(ValidateIdWithMessage, OpLineGood) {
   CompileSuccessfully(spirv.c_str());
   EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
 }
+
 TEST_F(ValidateIdWithMessage, OpLineFileBad) {
   string spirv = kGLSL450MemoryModel + R"(
   %1 = OpTypeInt 32 0
@@ -2675,6 +2676,8 @@ TEST_F(ValidateIdWithMessage, OpFunctionGood) {
 %2 = OpTypeInt 32 0
 %3 = OpTypeFunction %1 %2 %2
 %4 = OpFunction %1 None %3
+%5 = OpLabel
+     OpReturn
      OpFunctionEnd)";
   CompileSuccessfully(spirv.c_str());
   EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
@@ -2683,9 +2686,11 @@ TEST_F(ValidateIdWithMessage, OpFunctionResultTypeBad) {
   string spirv = kGLSL450MemoryModel + R"(
 %1 = OpTypeVoid
 %2 = OpTypeInt 32 0
-%5 = OpConstant %2 42
-%3 = OpTypeFunction %1 %2 %2
-%4 = OpFunction %2 None %3
+%3 = OpConstant %2 42
+%4 = OpTypeFunction %1 %2 %2
+%5 = OpFunction %2 None %4
+%6 = OpLabel
+     OpReturn
      OpFunctionEnd)";
   CompileSuccessfully(spirv.c_str());
   EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
@@ -2698,6 +2703,8 @@ TEST_F(ValidateIdWithMessage, OpFunctionFunctionTypeBad) {
 %1 = OpTypeVoid
 %2 = OpTypeInt 32 0
 %4 = OpFunction %1 None %2
+%5 = OpLabel
+     OpReturn
 OpFunctionEnd)";
   CompileSuccessfully(spirv.c_str());
   EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
@@ -3790,6 +3797,89 @@ OpFunctionEnd
       getDiagnosticString(),
       HasSubstr(
           "ID 7 defined in block 6 does not dominate its use in block 9"));
+}
+
+TEST_F(ValidateIdWithMessage, SpecIdTargetNotSpecializationConstant) {
+  string spirv = kGLSL450MemoryModel + R"(
+OpDecorate %1 SpecId 200
+%void = OpTypeVoid
+%2 = OpTypeFunction %void
+%int = OpTypeInt 32 0
+%1 = OpConstant %int 3
+%main = OpFunction %1 None %2
+%4 = OpLabel
+OpReturn
+OpFunctionEnd
+  )";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      HasSubstr("OpDecorate SpectId decoration target <id> '1' is not a "
+                "scalar specialization constant."));
+}
+
+TEST_F(ValidateIdWithMessage, SpecIdTargetOpSpecConstantOpBad) {
+  string spirv = kGLSL450MemoryModel + R"(
+OpDecorate %1 SpecId 200
+%void = OpTypeVoid
+%2 = OpTypeFunction %void
+%int = OpTypeInt 32 0
+%3 = OpConstant %int 1
+%4 = OpConstant %int 2
+%1 = OpSpecConstantOp %int IAdd %3 %4
+%main = OpFunction %1 None %2
+%6 = OpLabel
+OpReturn
+OpFunctionEnd
+  )";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      HasSubstr("OpDecorate SpectId decoration target <id> '1' is not a "
+                "scalar specialization constant."));
+}
+
+TEST_F(ValidateIdWithMessage, SpecIdTargetOpSpecConstantCompositeBad) {
+  string spirv = kGLSL450MemoryModel + R"(
+OpDecorate %1 SpecId 200
+%void = OpTypeVoid
+%2 = OpTypeFunction %void
+%int = OpTypeInt 32 0
+%1 = OpSpecConstantComposite %int
+%main = OpFunction %1 None %2
+%4 = OpLabel
+OpReturn
+OpFunctionEnd
+  )";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      HasSubstr("OpDecorate SpectId decoration target <id> '1' is not a "
+                "scalar specialization constant."));
+}
+
+TEST_F(ValidateIdWithMessage, SpecIdTargetGood) {
+  string spirv = kGLSL450MemoryModel + R"(
+OpDecorate %3 SpecId 200
+OpDecorate %4 SpecId 201
+OpDecorate %5 SpecId 202
+%1 = OpTypeVoid
+%2 = OpTypeFunction %1
+%int = OpTypeInt 32 0
+%bool = OpTypeBool
+%3 = OpSpecConstant %int 3
+%4 = OpSpecConstantTrue %bool
+%5 = OpSpecConstantFalse %bool
+%main = OpFunction %1 None %2
+%6 = OpLabel
+OpReturn
+OpFunctionEnd
+  )";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_SUCCESS, ValidateAndRetrieveValidationState());
 }
 
 // TODO: OpLifetimeStart

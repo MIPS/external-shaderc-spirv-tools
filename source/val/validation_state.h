@@ -16,6 +16,7 @@
 #define LIBSPIRV_VAL_VALIDATIONSTATE_H_
 
 #include <deque>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -56,8 +57,11 @@ class ValidationState_t {
  public:
   // Features that can optionally be turned on by a capability.
   struct Feature {
-    bool declare_int16_type = false;    // Allow OpTypeInt with 16 bit width?
-    bool declare_float16_type = false;  // Allow OpTypeFloat with 16 bit width?
+    bool declare_int16_type = false;     // Allow OpTypeInt with 16 bit width?
+    bool declare_float16_type = false;   // Allow OpTypeFloat with 16 bit width?
+    bool free_fp_rounding_mode = false;  // Allow the FPRoundingMode decoration
+                                         // and its vaules to be used without
+                                         // requiring any capability
   };
 
   ValidationState_t(const spv_const_context context,
@@ -201,7 +205,7 @@ class ValidationState_t {
   /// Returns the memory model of this module, or Simple if uninitialized.
   SpvMemoryModel memory_model() const;
 
-  AssemblyGrammar& grammar() { return grammar_; }
+  const AssemblyGrammar& grammar() const { return grammar_; }
 
   /// Registers the instruction
   void RegisterInstruction(const spv_parsed_instruction_t& inst);
@@ -304,6 +308,10 @@ class ValidationState_t {
   // Returns the state of optional features.
   const Feature& features() const { return features_; }
 
+  /// Adds the instruction data to unique_type_declarations_.
+  /// Returns false if an identical type declaration already exists.
+  bool RegisterUniqueTypeDeclaration(const spv_parsed_instruction_t& inst);
+
  private:
   ValidationState_t(const ValidationState_t&);
 
@@ -370,6 +378,12 @@ class ValidationState_t {
 
   /// Stores the list of decorations for a given <id>
   std::unordered_map<uint32_t, std::vector<Decoration>> id_decorations_;
+
+  /// Stores type declarations which need to be unique (i.e. non-aggregates),
+  /// in the form [opcode, operand words], result_id is not stored.
+  /// Using ordered set to avoid the need for a vector hash function.
+  /// The size of this container is expected not to exceed double-digits.
+  std::set<std::vector<uint32_t>> unique_type_declarations_;
 
   AssemblyGrammar grammar_;
 

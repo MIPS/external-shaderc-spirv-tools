@@ -298,6 +298,7 @@ void ValidationState_t::RegisterCapability(SpvCapability cap) {
     case SpvCapabilityStorageInputOutput16:
       features_.declare_int16_type = true;
       features_.declare_float16_type = true;
+      features_.free_fp_rounding_mode = true;
     default:
       break;
   }
@@ -400,4 +401,23 @@ void ValidationState_t::RegisterSampledImageConsumer(uint32_t sampled_image_id,
 uint32_t ValidationState_t::getIdBound() const { return id_bound_; }
 
 void ValidationState_t::setIdBound(const uint32_t bound) { id_bound_ = bound; }
+
+bool ValidationState_t::RegisterUniqueTypeDeclaration(
+    const spv_parsed_instruction_t& inst) {
+  std::vector<uint32_t> key;
+  key.push_back(static_cast<uint32_t>(inst.opcode));
+  for (int index = 0; index < inst.num_operands; ++index) {
+    const spv_parsed_operand_t& operand = inst.operands[index];
+
+    if (operand.type == SPV_OPERAND_TYPE_RESULT_ID) continue;
+
+    const int words_begin = operand.offset;
+    const int words_end = words_begin + operand.num_words;
+    assert(words_end <= static_cast<int>(inst.num_words));
+
+    key.insert(key.end(), inst.words + words_begin, inst.words + words_end);
+  }
+
+  return unique_type_declarations_.insert(std::move(key)).second;
+}
 }  /// namespace libspirv

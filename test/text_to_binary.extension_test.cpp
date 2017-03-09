@@ -168,4 +168,79 @@ INSTANTIATE_TEST_CASE_P(
                              {1, SpvDecorationBuiltIn, SpvBuiltInDrawIndex})},
         })), );
 
+// SPV_KHR_subgroup_vote
+
+INSTANTIATE_TEST_CASE_P(
+    SPV_KHR_subgroup_vote, ExtensionRoundTripTest,
+    // We'll get coverage over operand tables by trying the universal
+    // environments, and at least one specific environment.
+    Combine(
+        Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1,
+               SPV_ENV_VULKAN_1_0),
+        ValuesIn(std::vector<AssemblyCase>{
+            {"OpCapability SubgroupVoteKHR\n",
+             MakeInstruction(SpvOpCapability, {SpvCapabilitySubgroupVoteKHR})},
+            {"%2 = OpSubgroupAnyKHR %1 %3\n",
+             MakeInstruction(SpvOpSubgroupAnyKHR, {1, 2, 3})},
+            {"%2 = OpSubgroupAllKHR %1 %3\n",
+             MakeInstruction(SpvOpSubgroupAllKHR, {1, 2, 3})},
+            {"%2 = OpSubgroupAllEqualKHR %1 %3\n",
+             MakeInstruction(SpvOpSubgroupAllEqualKHR, {1, 2, 3})},
+        })), );
+
+// SPV_KHR_16bit_storage
+
+INSTANTIATE_TEST_CASE_P(
+    SPV_KHR_16bit_storage, ExtensionRoundTripTest,
+    // We'll get coverage over operand tables by trying the universal
+    // environments, and at least one specific environment.
+    Combine(Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1,
+                   SPV_ENV_VULKAN_1_0),
+            ValuesIn(std::vector<AssemblyCase>{
+                {"OpCapability StorageUniformBufferBlock16\n",
+                 MakeInstruction(SpvOpCapability,
+                                 {SpvCapabilityStorageUniformBufferBlock16})},
+                {"OpCapability StorageUniform16\n",
+                 MakeInstruction(SpvOpCapability,
+                                 {SpvCapabilityStorageUniform16})},
+                {"OpCapability StoragePushConstant16\n",
+                 MakeInstruction(SpvOpCapability,
+                                 {SpvCapabilityStoragePushConstant16})},
+                {"OpCapability StorageInputOutput16\n",
+                 MakeInstruction(SpvOpCapability,
+                                 {SpvCapabilityStorageInputOutput16})},
+            })), );
+
+// SPV_KHR_device_group
+
+INSTANTIATE_TEST_CASE_P(
+    SPV_KHR_device_group, ExtensionRoundTripTest,
+    // We'll get coverage over operand tables by trying the universal
+    // environments, and at least one specific environment.
+    Combine(Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1,
+                   SPV_ENV_VULKAN_1_0),
+            ValuesIn(std::vector<AssemblyCase>{
+                {"OpCapability DeviceGroup\n",
+                 MakeInstruction(SpvOpCapability, {SpvCapabilityDeviceGroup})},
+                {"OpDecorate %1 BuiltIn DeviceIndex\n",
+                 MakeInstruction(SpvOpDecorate, {1, SpvDecorationBuiltIn,
+                                                 SpvBuiltInDeviceIndex})},
+            })), );
+
+// SPV_KHR_multiview
+
+INSTANTIATE_TEST_CASE_P(
+    SPV_KHR_multiview, ExtensionRoundTripTest,
+    // We'll get coverage over operand tables by trying the universal
+    // environments, and at least one specific environment.
+    Combine(Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1,
+                   SPV_ENV_VULKAN_1_0),
+            ValuesIn(std::vector<AssemblyCase>{
+                {"OpCapability MultiView\n",
+                 MakeInstruction(SpvOpCapability, {SpvCapabilityMultiView})},
+                {"OpDecorate %1 BuiltIn ViewIndex\n",
+                 MakeInstruction(SpvOpDecorate, {1, SpvDecorationBuiltIn,
+                                                 SpvBuiltInViewIndex})},
+            })), );
+
 }  // anonymous namespace
