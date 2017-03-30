@@ -54,6 +54,7 @@ typedef enum spv_result_t {
   SPV_ERROR_INVALID_LAYOUT = -12,
   SPV_ERROR_INVALID_CAPABILITY = -13,
   SPV_ERROR_INVALID_DATA = -14,  // Indicates data rules validation failure.
+  SPV_ERROR_MISSING_EXTENSION = -15,
   SPV_FORCE_32_BIT_ENUM(spv_result_t)
 } spv_result_t;
 
@@ -67,7 +68,7 @@ typedef enum spv_message_level_t {
                            // Will exit the program immediately. E.g.,
                            // unimplemented feature.
   SPV_MSG_ERROR,           // Normal error due to user input.
-  SPV_MSG_WARNINING,       // Warning information.
+  SPV_MSG_WARNING,         // Warning information.
   SPV_MSG_INFO,            // General information.
   SPV_MSG_DEBUG,           // Debug information.
 } spv_message_level_t;
@@ -226,6 +227,7 @@ typedef enum spv_ext_inst_type_t {
   SPV_EXT_INST_TYPE_NONE = 0,
   SPV_EXT_INST_TYPE_GLSL_STD_450,
   SPV_EXT_INST_TYPE_OPENCL_STD,
+  SPV_EXT_INST_TYPE_SPV_AMD_GCN_SHADER,
 
   SPV_FORCE_32_BIT_ENUM(spv_ext_inst_type_t)
 } spv_ext_inst_type_t;

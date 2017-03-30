@@ -139,6 +139,7 @@ ValidationState_t::ValidationState_t(const spv_const_context ctx,
       current_layout_section_(kLayoutCapabilities),
       module_functions_(),
       module_capabilities_(),
+      module_extensions_(),
       ordered_instructions_(),
       all_definitions_(),
       global_vars_(),
@@ -304,14 +305,20 @@ void ValidationState_t::RegisterCapability(SpvCapability cap) {
   }
 }
 
-bool ValidationState_t::HasAnyOf(const CapabilitySet& capabilities) const {
-  bool found = false;
-  bool any_queried = false;
-  capabilities.ForEach([&found, &any_queried, this](SpvCapability c) {
-    any_queried = true;
-    found = found || this->module_capabilities_.Contains(c);
-  });
-  return !any_queried || found;
+void ValidationState_t::RegisterExtension(Extension ext) {
+  if (module_extensions_.Contains(ext)) return;
+
+  module_extensions_.Add(ext);
+}
+
+bool ValidationState_t::HasAnyOfCapabilities(
+    const CapabilitySet& capabilities) const {
+  return module_capabilities_.HasAnyOf(capabilities);
+}
+
+bool ValidationState_t::HasAnyOfExtensions(
+    const ExtensionSet& extensions) const {
+  return module_extensions_.HasAnyOf(extensions);
 }
 
 void ValidationState_t::set_addressing_model(SpvAddressingModel am) {

@@ -175,6 +175,9 @@ class ValidationState_t {
   /// Registers the capability and its dependent capabilities
   void RegisterCapability(SpvCapability cap);
 
+  /// Registers the extension.
+  void RegisterExtension(Extension ext);
+
   /// Registers the function in the module. Subsequent instructions will be
   /// called against this function
   spv_result_t RegisterFunction(uint32_t id, uint32_t ret_type_id,
@@ -189,9 +192,18 @@ class ValidationState_t {
     return module_capabilities_.Contains(cap);
   }
 
-  /// Returns true if any of the capabilities are enabled, or if the given
-  /// capabilities is the empty set.
-  bool HasAnyOf(const libspirv::CapabilitySet& capabilities) const;
+  /// Returns true if the extension is enabled in the module.
+  bool HasExtension(Extension ext) const {
+    return module_extensions_.Contains(ext);
+  }
+
+  /// Returns true if any of the capabilities is enabled, or if |capabilities|
+  /// is an empty set.
+  bool HasAnyOfCapabilities(const libspirv::CapabilitySet& capabilities) const;
+
+  /// Returns true if any of the extensions is enabled, or if |extensions|
+  /// is an empty set.
+  bool HasAnyOfExtensions(const libspirv::ExtensionSet& extensions) const;
 
   /// Sets the addressing model of this module (logical/physical).
   void set_addressing_model(SpvAddressingModel am);
@@ -342,9 +354,11 @@ class ValidationState_t {
   /// A list of functions in the module
   std::deque<Function> module_functions_;
 
-  /// The capabilities available in the module
-  libspirv::CapabilitySet
-      module_capabilities_;  /// Module's declared capabilities.
+  /// Capabilities declared in the module
+  libspirv::CapabilitySet module_capabilities_;
+
+  /// Extensions declared in the module
+  libspirv::ExtensionSet module_extensions_;
 
   /// List of all instructions in the order they appear in the binary
   std::deque<Instruction> ordered_instructions_;

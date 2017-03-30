@@ -22,18 +22,23 @@
 #include <sstream>
 #include <string>
 
+#include "binary.h"
 #include "diagnostic.h"
 #include "enum_set.h"
+#include "enum_string_mapping.h"
+#include "extensions.h"
 #include "opcode.h"
 #include "operand.h"
 #include "spirv_definition.h"
 #include "spirv_validator_options.h"
+#include "util/string_utils.h"
 #include "val/function.h"
 #include "val/validation_state.h"
 
 using libspirv::AssemblyGrammar;
 using libspirv::CapabilitySet;
 using libspirv::DiagnosticStream;
+using libspirv::ExtensionSet;
 using libspirv::ValidationState_t;
 
 namespace {
@@ -103,16 +108,29 @@ CapabilitySet RequiredCapabilities(const ValidationState_t& state,
   return CapabilitySet();
 }
 
+// Returns operand's required extensions.
+ExtensionSet RequiredExtensions(const ValidationState_t& state,
+                                spv_operand_type_t type, uint32_t operand) {
+  spv_operand_desc operand_desc;
+  if (state.grammar().lookupOperand(type, operand, &operand_desc) ==
+      SPV_SUCCESS) {
+    assert(operand_desc);
+    return operand_desc->extensions;
+  }
+
+  return ExtensionSet();
+}
+
 }  // namespace
 
 namespace libspirv {
 
-spv_result_t CapCheck(ValidationState_t& _,
-                      const spv_parsed_instruction_t* inst) {
+spv_result_t CapabilityCheck(ValidationState_t& _,
+                             const spv_parsed_instruction_t* inst) {
   spv_opcode_desc opcode_desc;
   const SpvOp opcode = static_cast<SpvOp>(inst->opcode);
   if (SPV_SUCCESS == _.grammar().lookupOpcode(opcode, &opcode_desc) &&
-      !_.HasAnyOf(opcode_desc->capabilities))
+      !_.HasAnyOfCapabilities(opcode_desc->capabilities))
     return _.diag(SPV_ERROR_INVALID_CAPABILITY)
            << "Opcode " << spvOpcodeString(opcode)
            << " requires one of these capabilities: "
@@ -125,7 +143,7 @@ spv_result_t CapCheck(ValidationState_t& _,
       for (uint32_t mask_bit = 0x80000000; mask_bit; mask_bit >>= 1) {
         if (word & mask_bit) {
           const auto caps = RequiredCapabilities(_, operand.type, mask_bit);
-          if (!_.HasAnyOf(caps)) {
+          if (!_.HasAnyOfCapabilities(caps)) {
             return CapabilityError(_, i + 1, opcode,
                                    ToString(caps, _.grammar()));
           }
@@ -138,9 +156,30 @@ spv_result_t CapCheck(ValidationState_t& _,
     } else {
       // Check the operand word as a whole.
       const auto caps = RequiredCapabilities(_, operand.type, word);
-      if (!_.HasAnyOf(caps)) {
+      if (!_.HasAnyOfCapabilities(caps)) {
         return CapabilityError(_, i + 1, opcode, ToString(caps, _.grammar()));
       }
+    }
+  }
+  return SPV_SUCCESS;
+}
+
+// Checks that all required extensions were declared in the module.
+spv_result_t ExtensionCheck(ValidationState_t& _,
+                            const spv_parsed_instruction_t* inst) {
+  const SpvOp opcode = static_cast<SpvOp>(inst->opcode);
+  for (size_t operand_index = 0; operand_index < inst->num_operands;
+       ++operand_index) {
+    const auto& operand = inst->operands[operand_index];
+    const uint32_t word = inst->words[operand.offset];
+    const ExtensionSet required_extensions =
+        RequiredExtensions(_, operand.type, word);
+    if (!_.HasAnyOfExtensions(required_extensions)) {
+      return _.diag(SPV_ERROR_MISSING_EXTENSION)
+          << spvutils::CardinalToOrdinal(operand_index + 1) << " operand of "
+          << spvOpcodeString(opcode) << ": operand " << word
+          << " requires one of these extensions: "
+          << ExtensionSetToString(required_extensions);
     }
   }
   return SPV_SUCCESS;
@@ -340,9 +379,22 @@ spv_result_t RegisterDecorations(ValidationState_t& _,
   return SPV_SUCCESS;
 }
 
+// Parses OpExtension instruction and logs warnings if unsuccessful.
+void CheckIfKnownExtension(ValidationState_t& _,
+                           const spv_parsed_instruction_t* inst) {
+  const std::string extension_str = GetExtensionString(inst);
+  Extension extension;
+  if (!GetExtensionFromString(extension_str, &extension)) {
+    _.diag(SPV_SUCCESS) << "Found unrecognized extension " << extension_str;
+    return;
+  }
+}
+
 spv_result_t InstructionPass(ValidationState_t& _,
                              const spv_parsed_instruction_t* inst) {
   const SpvOp opcode = static_cast<SpvOp>(inst->opcode);
+  if (opcode == SpvOpExtension)
+    CheckIfKnownExtension(_, inst);
   if (opcode == SpvOpCapability)
     _.RegisterCapability(
         static_cast<SpvCapability>(inst->words[inst->operands[0].offset]));
@@ -395,7 +447,8 @@ spv_result_t InstructionPass(ValidationState_t& _,
   // that are applied to any given <id>.
   RegisterDecorations(_, inst);
 
-  if (auto error = CapCheck(_, inst)) return error;
+  if (auto error = ExtensionCheck(_, inst)) return error;
+  if (auto error = CapabilityCheck(_, inst)) return error;
   if (auto error = LimitCheckIdBound(_, inst)) return error;
   if (auto error = LimitCheckStruct(_, inst)) return error;
   if (auto error = LimitCheckSwitch(_, inst)) return error;
