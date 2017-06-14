@@ -34,55 +34,6 @@ class BasicBlock;
 using get_blocks_func =
     std::function<const std::vector<BasicBlock*>*(const BasicBlock*)>;
 
-/// @brief Depth first traversal starting from the \p entry BasicBlock
-///
-/// This function performs a depth first traversal from the \p entry
-/// BasicBlock and calls the pre/postorder functions when it needs to process
-/// the node in pre order, post order. It also calls the backedge function
-/// when a back edge is encountered.
-///
-/// @param[in] entry      The root BasicBlock of a CFG
-/// @param[in] successor_func  A function which will return a pointer to the
-///                            successor nodes
-/// @param[in] preorder   A function that will be called for every block in a
-///                       CFG following preorder traversal semantics
-/// @param[in] postorder  A function that will be called for every block in a
-///                       CFG following postorder traversal semantics
-/// @param[in] backedge   A function that will be called when a backedge is
-///                       encountered during a traversal
-/// NOTE: The @p successor_func and predecessor_func each return a pointer to a
-/// collection such that iterators to that collection remain valid for the
-/// lifetime of the algorithm.
-void DepthFirstTraversal(
-    const BasicBlock* entry, get_blocks_func successor_func,
-    std::function<void(const BasicBlock*)> preorder,
-    std::function<void(const BasicBlock*)> postorder,
-    std::function<void(const BasicBlock*, const BasicBlock*)> backedge);
-
-/// @brief Calculates dominator edges for a set of blocks
-///
-/// Computes dominators using the algorithm of Cooper, Harvey, and Kennedy
-/// "A Simple, Fast Dominance Algorithm", 2001.
-///
-/// The algorithm assumes there is a unique root node (a node without
-/// predecessors), and it is therefore at the end of the postorder vector.
-///
-/// This function calculates the dominator edges for a set of blocks in the CFG.
-/// Uses the dominator algorithm by Cooper et al.
-///
-/// @param[in] postorder        A vector of blocks in post order traversal order
-///                             in a CFG
-/// @param[in] predecessor_func Function used to get the predecessor nodes of a
-///                             block
-///
-/// @return the dominator tree of the graph, as a vector of pairs of nodes.
-/// The first node in the pair is a node in the graph. The second node in the
-/// pair is its immediate dominator in the sense of Cooper et.al., where a block
-/// without predecessors (such as the root node) is its own immediate dominator.
-std::vector<std::pair<BasicBlock*, BasicBlock*>> CalculateDominators(
-    const std::vector<const BasicBlock*>& postorder,
-    get_blocks_func predecessor_func);
-
 /// @brief Performs the Control Flow Graph checks
 ///
 /// @param[in] _ the validation state of the module
@@ -213,6 +164,12 @@ spv_result_t ValidateBinaryAndKeepValidationState(
     const spv_const_context context, spv_const_validator_options options,
     const uint32_t* words, const size_t num_words, spv_diagnostic* pDiagnostic,
     std::unique_ptr<libspirv::ValidationState_t>* vstate);
+
+// Performs validation for a single instruction and updates given validation
+// state.
+spv_result_t ValidateInstructionAndUpdateValidationState(
+    libspirv::ValidationState_t* vstate, const spv_parsed_instruction_t* inst);
+
 }  // namespace spvtools
 
 #endif  // LIBSPIRV_VALIDATE_H_

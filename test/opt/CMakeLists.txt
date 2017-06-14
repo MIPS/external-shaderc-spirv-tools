@@ -28,8 +28,23 @@ add_spvtools_unittest(TARGET pass_manager
   LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET optimizer
+  SRCS optimizer_test.cpp
+  LIBS SPIRV-Tools-opt
+)
+
 add_spvtools_unittest(TARGET pass_strip_debug_info
   SRCS strip_debug_info_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_compact_ids
+  SRCS compact_ids_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_flatten_decoration
+  SRCS flatten_decoration_test.cpp pass_utils.cpp
   LIBS SPIRV-Tools-opt
 )
 
@@ -40,6 +55,16 @@ add_spvtools_unittest(TARGET pass_freeze_spec_const
 
 add_spvtools_unittest(TARGET pass_inline
   SRCS inline_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_local_single_block_elim
+  SRCS local_single_block_elim.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_local_access_chain_convert
+  SRCS local_access_chain_convert_test.cpp pass_utils.cpp
   LIBS SPIRV-Tools-opt
 )
 

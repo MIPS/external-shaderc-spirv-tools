@@ -106,18 +106,20 @@ macro(spvtools_vendor_tables VENDOR_TABLE)
     COMMENT "Generate extended instruction tables for ${VENDOR_TABLE}.")
   list(APPEND EXTINST_CPP_DEPENDS ${INSTS_FILE})
   add_custom_target(spirv-tools-${VENDOR_TABLE} DEPENDS ${INSTS_FILE})
+  set_property(TARGET spirv-tools-${VENDOR_TABLE} PROPERTY FOLDER "SPIRV-Tools build")
 endmacro(spvtools_vendor_tables)
 
 spvtools_core_tables("1.0")
 spvtools_core_tables("1.1")
-spvtools_enum_string_mapping("1.1")
+spvtools_core_tables("1.2")
+spvtools_enum_string_mapping("1.2")
 spvtools_opencl_tables("1.0")
 spvtools_glsl_tables("1.0")
-spvtools_vendor_tables("amd-gcn-shader")
+spvtools_vendor_tables("spv-amd-gcn-shader")
 
-spvtools_vimsyntax("1.1" "1.0")
+spvtools_vimsyntax("1.2" "1.0")
 add_custom_target(spirv-tools-vimsyntax DEPENDS ${VIMSYNTAX_FILE})
-
+set_property(TARGET spirv-tools-vimsyntax PROPERTY FOLDER "SPIRV-Tools utilities")
 
 # Extract the list of known generators from the SPIR-V XML registry file.
 set(GENERATOR_INC_FILE ${spirv-tools_BINARY_DIR}/generators.inc)
@@ -181,6 +183,7 @@ add_custom_command(OUTPUT ${SPIRV_TOOLS_BUILD_VERSION_INC}
 # This is not required for any dependence chain.
 add_custom_target(spirv-tools-build-version
    DEPENDS ${SPIRV_TOOLS_BUILD_VERSION_INC})
+set_property(TARGET spirv-tools-build-version PROPERTY FOLDER "SPIRV-Tools build")
 
 add_subdirectory(opt)
 
@@ -188,11 +191,13 @@ set(SPIRV_SOURCES
   ${spirv-tools_SOURCE_DIR}/include/spirv-tools/libspirv.h
 
   ${CMAKE_CURRENT_SOURCE_DIR}/util/bitutils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/util/bit_stream.h
   ${CMAKE_CURRENT_SOURCE_DIR}/util/hex_float.h
   ${CMAKE_CURRENT_SOURCE_DIR}/util/parse_number.h
   ${CMAKE_CURRENT_SOURCE_DIR}/util/string_utils.h
   ${CMAKE_CURRENT_SOURCE_DIR}/assembly_grammar.h
   ${CMAKE_CURRENT_SOURCE_DIR}/binary.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/cfa.h
   ${CMAKE_CURRENT_SOURCE_DIR}/diagnostic.h
   ${CMAKE_CURRENT_SOURCE_DIR}/enum_set.h
   ${CMAKE_CURRENT_SOURCE_DIR}/enum_string_mapping.h
@@ -215,6 +220,7 @@ set(SPIRV_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/text_handler.h
   ${CMAKE_CURRENT_SOURCE_DIR}/validate.h
 
+  ${CMAKE_CURRENT_SOURCE_DIR}/util/bit_stream.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/util/parse_number.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/util/string_utils.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/assembly_grammar.cpp
@@ -233,6 +239,7 @@ set(SPIRV_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/print.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/software_version.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/spirv_endian.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/spirv_stats.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/spirv_target_env.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/spirv_validator_options.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/table.cpp
@@ -276,6 +283,7 @@ target_include_directories(${SPIRV_TOOLS}
   PRIVATE ${spirv-tools_BINARY_DIR}
   PRIVATE ${SPIRV_HEADER_INCLUDE_DIR}
   )
+set_property(TARGET ${SPIRV_TOOLS} PROPERTY FOLDER "SPIRV-Tools libraries")
 
 install(TARGETS ${SPIRV_TOOLS}
   RUNTIME DESTINATION bin

@@ -102,12 +102,30 @@ Optimizer::PassToken CreateNullPass();
 // Section 3.32.2 of the SPIR-V spec) of the SPIR-V module to be optimized.
 Optimizer::PassToken CreateStripDebugInfoPass();
 
-// Creates a set-spec-constant-default-value pass.
+// Creates a set-spec-constant-default-value pass from a mapping from spec-ids
+// to the default values in the form of string.
 // A set-spec-constant-default-value pass sets the default values for the
 // spec constants that have SpecId decorations (i.e., those defined by
 // OpSpecConstant{|True|False} instructions).
 Optimizer::PassToken CreateSetSpecConstantDefaultValuePass(
     const std::unordered_map<uint32_t, std::string>& id_value_map);
+
+// Creates a set-spec-constant-default-value pass from a mapping from spec-ids
+// to the default values in the form of bit pattern.
+// A set-spec-constant-default-value pass sets the default values for the
+// spec constants that have SpecId decorations (i.e., those defined by
+// OpSpecConstant{|True|False} instructions).
+Optimizer::PassToken CreateSetSpecConstantDefaultValuePass(
+    const std::unordered_map<uint32_t, std::vector<uint32_t>>& id_value_map);
+
+// Creates a flatten-decoration pass.
+// A flatten-decoration pass replaces grouped decorations with equivalent
+// ungrouped decorations.  That is, it replaces each OpDecorationGroup
+// instruction and associated OpGroupDecorate and OpGroupMemberDecorate
+// instructions with equivalent OpDecorate and OpMemberDecorate instructions.
+// The pass does not attempt to preserve debug information for instructions
+// it removes.
+Optimizer::PassToken CreateFlattenDecorationPass();
 
 // Creates a freeze-spec-constant-value pass.
 // A freeze-spec-constant pass specializes the value of spec constants to
@@ -175,6 +193,47 @@ Optimizer::PassToken CreateEliminateDeadConstantPass();
 // size or runtime performance. Functions that are not designated as entry
 // points are not changed.
 Optimizer::PassToken CreateInlinePass();
+  
+// Creates a single-block local variable load/store elimination pass.
+// For every entry point function, do single block memory optimization of 
+// function variables referenced only with non-access-chain loads and stores.
+// For each targeted variable load, if previous store to that variable in the
+// block, replace the load's result id with the value id of the store.
+// If previous load within the block, replace the current load's result id
+// with the previous load's result id. In either case, delete the current
+// load. Finally, check if any remaining stores are useless, and delete store
+// and variable if possible.
+//
+// The presence of access chain references and function calls can inhibit
+// the above optimization.
+//
+// Only modules with logical addressing are currently processed. 
+//
+// This pass is most effective if preceeded by Inlining and 
+// LocalAccessChainConvert. This pass will reduce the work needed to be done
+// by LocalSingleStoreElim and LocalSSARewrite.
+Optimizer::PassToken CreateLocalSingleBlockLoadStoreElimPass();
+
+// Creates a local access chain conversion pass.
+// A local access chain conversion pass identifies all function scope
+// variables which are accessed only with loads, stores and access chains
+// with constant indices. It then converts all loads and stores of such
+// variables into equivalent sequences of loads, stores, extracts and inserts.
+//
+// This pass only processes entry point functions. It currently only converts
+// non-nested, non-ptr access chains. It does not process modules with
+// non-32-bit integer types present. Optional memory access options on loads
+// and stores are ignored as we are only processing function scope variables.
+//
+// This pass unifies access to these variables to a single mode and simplifies
+// subsequent analysis and elimination of these variables along with their
+// loads and stores allowing values to propagate to their points of use where
+// possible.
+Optimizer::PassToken CreateLocalAccessChainConvertPass();
+
+// Creates a compact ids pass.
+// The pass remaps result ids to a compact and gapless range starting from %1.
+Optimizer::PassToken CreateCompactIdsPass();
 
 }  // namespace spvtools
 

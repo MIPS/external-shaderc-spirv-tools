@@ -40,7 +40,18 @@ if (NOT ${SPIRV_SKIP_EXECUTABLES})
           "Use shared (DLL) run-time lib even when Google Test is built as static lib."
           ON)
       endif()
-      add_subdirectory(${GMOCK_DIR})
+      add_subdirectory(${GMOCK_DIR} EXCLUDE_FROM_ALL)
     endif()
+  endif()
+  if (TARGET gmock)
+    set(GTEST_TARGETS
+      gtest
+      gtest_main
+      gmock
+      gmock_main
+    )
+    foreach(target ${GTEST_TARGETS})
+      set_property(TARGET ${target} PROPERTY FOLDER GoogleTest)
+    endforeach()
   endif()
 endif()

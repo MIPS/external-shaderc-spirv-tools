@@ -27,7 +27,7 @@
 #include "diagnostic.h"
 #include "enum_set.h"
 #include "spirv-tools/libspirv.h"
-#include "spirv/1.1/spirv.h"
+#include "spirv/1.2/spirv.h"
 #include "spirv_definition.h"
 #include "val/function.h"
 #include "val/instruction.h"
@@ -62,6 +62,12 @@ class ValidationState_t {
     bool free_fp_rounding_mode = false;  // Allow the FPRoundingMode decoration
                                          // and its vaules to be used without
                                          // requiring any capability
+
+    // Allow functionalities enabled by VariablePointers capability.
+    bool variable_pointers = false;
+    // Allow functionalities enabled by VariablePointersStorageBuffer
+    // capability.
+    bool variable_pointers_storage_buffer = false;
   };
 
   ValidationState_t(const spv_const_context context,

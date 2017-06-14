@@ -220,10 +220,14 @@ INSTANTIATE_TEST_CASE_P(AllCapabilities, CapabilityTest,
        "DrawParameters"},
       {SpvCapabilitySubgroupVoteKHR,
        "SubgroupVoteKHR"},
+      {SpvCapabilityStorageBuffer16BitAccess,
+       "StorageBuffer16BitAccess"},
       {SpvCapabilityStorageUniformBufferBlock16,
-       "StorageUniformBufferBlock16"},
+       "StorageBuffer16BitAccess"}, // Preferred name
+      {SpvCapabilityUniformAndStorageBuffer16BitAccess,
+       "UniformAndStorageBuffer16BitAccess"},
       {SpvCapabilityStorageUniform16,
-       "StorageUniform16"},
+       "UniformAndStorageBuffer16BitAccess"}, // Preferred name
       {SpvCapabilityStoragePushConstant16,
        "StoragePushConstant16"},
       {SpvCapabilityStorageInputOutput16,
@@ -244,6 +248,6 @@ INSTANTIATE_TEST_CASE_P(AllCapabilities, CapabilityTest,
        "ShaderStereoViewNV"},
       {SpvCapabilityPerViewAttributesNV,
        "PerViewAttributesNV"}
-    })));
+    })), );
 
 }  // anonymous namespace

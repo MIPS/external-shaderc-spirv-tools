@@ -96,6 +96,17 @@ struct AssemblyCase {
   std::vector<uint32_t> expected;
 };
 
+using ExtensionAssemblyTest = spvtest::TextToBinaryTestBase<
+    ::testing::TestWithParam<std::tuple<spv_target_env, AssemblyCase>>>;
+
+TEST_P(ExtensionAssemblyTest, Samples) {
+  const spv_target_env& env = std::get<0>(GetParam());
+  const AssemblyCase& ac = std::get<1>(GetParam());
+
+  // Check that it assembles correctly.
+  EXPECT_THAT(CompiledInstructions(ac.input, env), Eq(ac.expected));
+}
+
 using ExtensionRoundTripTest = spvtest::TextToBinaryTestBase<
     ::testing::TestWithParam<std::tuple<spv_target_env, AssemblyCase>>>;
 
@@ -197,10 +208,17 @@ INSTANTIATE_TEST_CASE_P(
     Combine(Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1,
                    SPV_ENV_VULKAN_1_0),
             ValuesIn(std::vector<AssemblyCase>{
-                {"OpCapability StorageUniformBufferBlock16\n",
+                {"OpCapability StorageBuffer16BitAccess\n",
                  MakeInstruction(SpvOpCapability,
                                  {SpvCapabilityStorageUniformBufferBlock16})},
-                {"OpCapability StorageUniform16\n",
+                {"OpCapability StorageBuffer16BitAccess\n",
+                 MakeInstruction(SpvOpCapability,
+                                 {SpvCapabilityStorageBuffer16BitAccess})},
+                {"OpCapability UniformAndStorageBuffer16BitAccess\n",
+                 MakeInstruction(
+                     SpvOpCapability,
+                     {SpvCapabilityUniformAndStorageBuffer16BitAccess})},
+                {"OpCapability UniformAndStorageBuffer16BitAccess\n",
                  MakeInstruction(SpvOpCapability,
                                  {SpvCapabilityStorageUniform16})},
                 {"OpCapability StoragePushConstant16\n",
@@ -209,6 +227,22 @@ INSTANTIATE_TEST_CASE_P(
                 {"OpCapability StorageInputOutput16\n",
                  MakeInstruction(SpvOpCapability,
                                  {SpvCapabilityStorageInputOutput16})},
+            })), );
+
+INSTANTIATE_TEST_CASE_P(
+    SPV_KHR_16bit_storage_alias_check, ExtensionAssemblyTest,
+    Combine(Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1,
+                   SPV_ENV_VULKAN_1_0),
+            ValuesIn(std::vector<AssemblyCase>{
+                // The old name maps to the new enum.
+                {"OpCapability StorageUniformBufferBlock16\n",
+                 MakeInstruction(SpvOpCapability,
+                                 {SpvCapabilityStorageBuffer16BitAccess})},
+                // The old name maps to the new enum.
+                {"OpCapability StorageUniform16\n",
+                 MakeInstruction(
+                     SpvOpCapability,
+                     {SpvCapabilityUniformAndStorageBuffer16BitAccess})},
             })), );
 
 // SPV_KHR_device_group
@@ -243,6 +277,7 @@ INSTANTIATE_TEST_CASE_P(
                                                  SpvBuiltInViewIndex})},
             })), );
 
+
 // SPV_AMD_gcn_shader
 
 #define PREAMBLE "%1 = OpExtInstImport \"SPV_AMD_gcn_shader\"\n"
@@ -267,5 +302,24 @@ INSTANTIATE_TEST_CASE_P(
                               MakeInstruction(SpvOpExtInst, {2, 3, 1, 3})})},
             })), );
 #undef PREAMBLE
+
+
+// SPV_KHR_variable_pointers
+
+INSTANTIATE_TEST_CASE_P(
+    SPV_KHR_variable_pointers, ExtensionRoundTripTest,
+    // We'll get coverage over operand tables by trying the universal
+    // environments, and at least one specific environment.
+    Combine(Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1,
+                   SPV_ENV_VULKAN_1_0),
+            ValuesIn(std::vector<AssemblyCase>{
+                {"OpCapability VariablePointers\n",
+                 MakeInstruction(SpvOpCapability,
+                                 {SpvCapabilityVariablePointers})},
+                {"OpCapability VariablePointersStorageBuffer\n",
+                 MakeInstruction(
+                     SpvOpCapability,
+                     {SpvCapabilityVariablePointersStorageBuffer})},
+            })), );
 
 }  // anonymous namespace

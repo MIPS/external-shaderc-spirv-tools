@@ -37,16 +37,23 @@ Options:
 
   -o <filename>   Set the output filename. Use '-' to mean stdout.
   --version       Display assembler version information.
-  --target-env {vulkan1.0|spv1.0|spv1.1}
-                  Use Vulkan1.0/SPIR-V1.0/SPIR-V1.1 validation rules.
+  --preserve-numeric-ids
+                  Numeric IDs in the binary will have the same values as in the
+                  source. Non-numeric IDs are allocated by filling in the gaps,
+                  starting with 1 and going up.
+  --target-env {vulkan1.0|spv1.0|spv1.1|spv1.2}
+                  Use Vulkan1.0/SPIR-V1.0/SPIR-V1.1/SPIR-V1.2
 )",
       argv0, argv0);
 }
 
+static const auto kDefaultEnvironment = SPV_ENV_UNIVERSAL_1_2;
+
 int main(int argc, char** argv) {
   const char* inFile = nullptr;
   const char* outFile = nullptr;
-  spv_target_env target_env = SPV_ENV_UNIVERSAL_1_1;
+  uint32_t options = 0;
+  spv_target_env target_env = kDefaultEnvironment;
   for (int argi = 1; argi < argc; ++argi) {
     if ('-' == argv[argi][0]) {
       switch (argv[argi][1]) {
@@ -76,12 +83,15 @@ int main(int argc, char** argv) {
           if (0 == strcmp(argv[argi], "--version")) {
             printf("%s\n", spvSoftwareVersionDetailsString());
             printf("Target: %s\n",
-                   spvTargetEnvDescription(SPV_ENV_UNIVERSAL_1_1));
+                   spvTargetEnvDescription(kDefaultEnvironment));
             return 0;
           }
           if (0 == strcmp(argv[argi], "--help")) {
             print_usage(argv[0]);
             return 0;
+          }
+          if (0 == strcmp(argv[argi], "--preserve-numeric-ids")) {
+            options |= SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS;
           }
           if (0 == strcmp(argv[argi], "--target-env")) {
             if (argi + 1 < argc) {
@@ -121,8 +131,8 @@ int main(int argc, char** argv) {
   spv_binary binary;
   spv_diagnostic diagnostic = nullptr;
   spv_context context = spvContextCreate(target_env);
-  spv_result_t error = spvTextToBinary(context, contents.data(),
-                                       contents.size(), &binary, &diagnostic);
+  spv_result_t error = spvTextToBinaryWithOptions(
+      context, contents.data(), contents.size(), options, &binary, &diagnostic);
   spvContextDestroy(context);
   if (error) {
     spvDiagnosticPrint(diagnostic);

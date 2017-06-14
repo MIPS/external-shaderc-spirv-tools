@@ -15,8 +15,8 @@
 #ifndef LIBSPIRV_VAL_INSTRUCTION_H_
 #define LIBSPIRV_VAL_INSTRUCTION_H_
 
+#include <cassert>
 #include <cstdint>
-
 #include <functional>
 #include <utility>
 #include <vector>
@@ -69,6 +69,20 @@ class Instruction {
   /// The operands of the Instruction
   const std::vector<spv_parsed_operand_t>& operands() const {
     return operands_;
+  }
+
+  /// Provides direct access to the stored C instruction object.
+  const spv_parsed_instruction_t& c_inst() const {
+    return inst_;
+  }
+
+  // Casts the words belonging to the operand under |index| to |T| and returns.
+  template <typename T>
+  T GetOperandAs(size_t index) const {
+    const spv_parsed_operand_t& operand = operands_.at(index);
+    assert(operand.num_words * 4 >= sizeof(T));
+    assert(operand.offset + operand.num_words <= inst_.num_words);
+    return *reinterpret_cast<const T*>(&words_[operand.offset]);
   }
 
  private:

@@ -19,6 +19,7 @@ if (POLICY CMP0054)
   # https://cmake.org/cmake/help/v3.1/policy/CMP0054.html
   cmake_policy(SET CMP0054 NEW)
 endif()
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 project(spirv-tools)
 enable_testing()
@@ -36,6 +37,8 @@ elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
   add_definitions(-DSPIRV_MAC)
 elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
   add_definitions(-DSPIRV_ANDROID)
+elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "FreeBSD")
+  add_definitions(-DSPIRV_FREEBSD)
 else()
   message(FATAL_ERROR "Your platform '${CMAKE_SYSTEM_NAME}' is not supported!")
 endif()
@@ -112,6 +115,12 @@ function(spvtools_default_compile_options TARGET)
       target_compile_options(${TARGET} PRIVATE
          -Wno-missing-field-initializers)
     endif()
+  endif()
+
+  if (MSVC)
+    # Specify /EHs for exception handling. This makes using SPIRV-Tools as
+    # dependencies in other projects easier.
+    target_compile_options(${TARGET} PRIVATE /EHs)
   endif()
 
   # For MinGW cross compile, statically link to the C++ runtime.

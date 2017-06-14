@@ -244,6 +244,15 @@ typedef enum spv_number_kind_t {
   SPV_NUMBER_FLOATING,
 } spv_number_kind_t;
 
+typedef enum spv_text_to_binary_options_t {
+  SPV_TEXT_TO_BINARY_OPTION_NONE = SPV_BIT(0),
+  // Numeric IDs in the binary will have the same values as in the source.
+  // Non-numeric IDs are allocated by filling in the gaps, starting with 1
+  // and going up.
+  SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS = SPV_BIT(1),
+  SPV_FORCE_32_BIT_ENUM(spv_text_to_binary_options_t)
+} spv_text_to_binary_options_t;
+
 typedef enum spv_binary_to_text_options_t {
   SPV_BINARY_TO_TEXT_OPTION_NONE = SPV_BIT(0),
   SPV_BINARY_TO_TEXT_OPTION_PRINT = SPV_BIT(1),
@@ -369,7 +378,8 @@ typedef enum {
   SPV_ENV_OPENGL_4_2,     // OpenGL 4.2 plus GL_ARB_gl_spirv, latest revisions.
   SPV_ENV_OPENGL_4_3,     // OpenGL 4.3 plus GL_ARB_gl_spirv, latest revisions.
   // There is no variant for OpenGL 4.4.
-  SPV_ENV_OPENGL_4_5,  // OpenGL 4.5 plus GL_ARB_gl_spirv, latest revisions.
+  SPV_ENV_OPENGL_4_5,     // OpenGL 4.5 plus GL_ARB_gl_spirv, latest revisions.
+  SPV_ENV_UNIVERSAL_1_2,  // SPIR-V 1.2, latest revision, no other restrictions.
 } spv_target_env;
 
 // SPIR-V Validator can be parameterized with the following Universal Limits.
@@ -415,6 +425,13 @@ void spvValidatorOptionsSetUniversalLimit(spv_validator_options options,
 spv_result_t spvTextToBinary(const spv_const_context context, const char* text,
                              const size_t length, spv_binary* binary,
                              spv_diagnostic* diagnostic);
+
+// Encodes the given SPIR-V assembly text to its binary representation. Same as
+// spvTextToBinary but with options. The options parameter is a bit field of
+// spv_text_to_binary_options_t.
+spv_result_t spvTextToBinaryWithOptions(
+    const spv_const_context context, const char* text, const size_t length,
+    const uint32_t options, spv_binary* binary, spv_diagnostic* diagnostic);
 
 // Frees an allocated text stream. This is a no-op if the text parameter
 // is a null pointer.

@@ -14,15 +14,19 @@
 add_library(SPIRV-Tools-opt
   basic_block.h
   build_module.h
+  compact_ids_pass.h
   constants.h
   def_use_manager.h
   eliminate_dead_constant_pass.h
+  flatten_decoration_pass.h
   function.h
   fold_spec_constant_op_and_composite_pass.h
   freeze_spec_constant_value_pass.h
   inline_pass.h
   instruction.h
   ir_loader.h
+  local_access_chain_convert_pass.h
+  local_single_block_elim_pass.h
   log.h
   module.h
   null_pass.h
@@ -38,14 +42,18 @@ add_library(SPIRV-Tools-opt
 
   basic_block.cpp
   build_module.cpp
+  compact_ids_pass.cpp
   def_use_manager.cpp
   eliminate_dead_constant_pass.cpp
+  flatten_decoration_pass.cpp
   function.cpp
   fold_spec_constant_op_and_composite_pass.cpp
   freeze_spec_constant_value_pass.cpp
   inline_pass.cpp
   instruction.cpp
   ir_loader.cpp
+  local_access_chain_convert_pass.cpp
+  local_single_block_elim_pass.cpp
   module.cpp
   set_spec_constant_default_value_pass.cpp
   optimizer.cpp
@@ -65,6 +73,8 @@ target_include_directories(SPIRV-Tools-opt
 # We need the assembling and disassembling functionalities in the main library.
 target_link_libraries(SPIRV-Tools-opt
   PUBLIC ${SPIRV_TOOLS})
+
+set_property(TARGET SPIRV-Tools-opt PROPERTY FOLDER "SPIRV-Tools libraries")
 
 install(TARGETS SPIRV-Tools-opt
   RUNTIME DESTINATION bin

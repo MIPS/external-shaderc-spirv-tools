@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -236,18 +237,19 @@ spv_result_t spvValidate(const spv_const_context context,
 spv_result_t ValidateBinaryUsingContextAndValidationState(
     const spv_context_t& context, const uint32_t* words, const size_t num_words,
     spv_diagnostic* pDiagnostic, ValidationState_t* vstate) {
-  spv_const_binary binary = new spv_const_binary_t{words, num_words};
+  auto binary = std::unique_ptr<spv_const_binary_t>(
+    new spv_const_binary_t{words, num_words});
 
   spv_endianness_t endian;
   spv_position_t position = {};
-  if (spvBinaryEndianness(binary, &endian)) {
+  if (spvBinaryEndianness(binary.get(), &endian)) {
     return libspirv::DiagnosticStream(position, context.consumer,
                                       SPV_ERROR_INVALID_BINARY)
            << "Invalid SPIR-V magic number.";
   }
 
   spv_header_t header;
-  if (spvBinaryHeaderGet(binary, endian, &header)) {
+  if (spvBinaryHeaderGet(binary.get(), endian, &header)) {
     return libspirv::DiagnosticStream(position, context.consumer,
                                       SPV_ERROR_INVALID_BINARY)
            << "Invalid SPIR-V header.";
@@ -374,7 +376,9 @@ spv_result_t spvValidateWithOptions(const spv_const_context context,
       hijack_context, binary->code, binary->wordCount, pDiagnostic, &vstate);
 }
 
-spv_result_t spvtools::ValidateBinaryAndKeepValidationState(
+namespace spvtools {
+
+spv_result_t ValidateBinaryAndKeepValidationState(
     const spv_const_context context, spv_const_validator_options options,
     const uint32_t* words, const size_t num_words, spv_diagnostic* pDiagnostic,
     std::unique_ptr<ValidationState_t>* vstate) {
@@ -390,3 +394,9 @@ spv_result_t spvtools::ValidateBinaryAndKeepValidationState(
       hijack_context, words, num_words, pDiagnostic, vstate->get());
 }
 
+spv_result_t ValidateInstructionAndUpdateValidationState(
+    ValidationState_t* vstate, const spv_parsed_instruction_t* inst) {
+  return ProcessInstruction(vstate, inst);
+}
+
+}  // namespace spvtools

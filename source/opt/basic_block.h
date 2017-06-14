@@ -48,12 +48,16 @@ class BasicBlock {
   Instruction& Label() { return *label_; }
 
   // Returns the id of the label at the top of this block
-  inline uint32_t label_id() const { return label_->result_id(); }
+  inline uint32_t id() const { return label_->result_id(); }
 
   iterator begin() { return iterator(&insts_, insts_.begin()); }
   iterator end() { return iterator(&insts_, insts_.end()); }
-  const_iterator cbegin() { return const_iterator(&insts_, insts_.cbegin()); }
-  const_iterator cend() { return const_iterator(&insts_, insts_.cend()); }
+  const_iterator cbegin() const {
+    return const_iterator(&insts_, insts_.cbegin());
+  }
+  const_iterator cend() const {
+    return const_iterator(&insts_, insts_.cend());
+  }
 
   // Runs the given function |f| on each instruction in this basic block, and
   // optionally on the debug line instructions that might precede them.

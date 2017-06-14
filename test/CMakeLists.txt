@@ -59,6 +59,7 @@ function(add_spvtools_unittest)
     target_link_libraries(${target} PRIVATE ${ARG_LIBS})
     target_link_libraries(${target} PRIVATE gmock_main)
     add_test(NAME spirv-tools-${target} COMMAND ${target})
+    set_property(TARGET ${target} PROPERTY FOLDER "SPIRV-Tools tests")
   endif()
 endfunction()
 
@@ -158,5 +159,16 @@ add_spvtools_unittest(
   SRCS log_test.cpp
   LIBS ${SPIRV_TOOLS})
 
+add_spvtools_unittest(
+  TARGET preserve_numeric_ids
+  SRCS preserve_numeric_ids_test.cpp
+  LIBS ${SPIRV_TOOLS})
+
+add_spvtools_unittest(
+  TARGET bit_stream
+  SRCS bit_stream.cpp
+  LIBS ${SPIRV_TOOLS})
+
 add_subdirectory(opt)
 add_subdirectory(val)
+add_subdirectory(stats)

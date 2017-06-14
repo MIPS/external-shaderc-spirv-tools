@@ -1358,6 +1358,250 @@ TEST_F(InlineTest, OpImageAndOpSampledImageOutOfBlock) {
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
+TEST_F(InlineTest, EarlyReturnFunctionInlined) {
+  // #version 140
+  // 
+  // in vec4 BaseColor;
+  // 
+  // float foo(vec4 bar)
+  // {
+  //     if (bar.x < 0.0)
+  //         return 0.0;
+  //     return bar.x;
+  // }
+  // 
+  // void main()
+  // {
+  //     vec4 color = vec4(foo(BaseColor));
+  //     gl_FragColor = color; 
+  // }
+
+  const std::string predefs =
+      R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %BaseColor %gl_FragColor
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 140
+OpName %main "main"
+OpName %foo_vf4_ "foo(vf4;"
+OpName %bar "bar"
+OpName %color "color"
+OpName %BaseColor "BaseColor"
+OpName %param "param"
+OpName %gl_FragColor "gl_FragColor"
+%void = OpTypeVoid
+%10 = OpTypeFunction %void
+%float = OpTypeFloat 32
+%v4float = OpTypeVector %float 4
+%_ptr_Function_v4float = OpTypePointer Function %v4float
+%14 = OpTypeFunction %float %_ptr_Function_v4float
+%uint = OpTypeInt 32 0
+%uint_0 = OpConstant %uint 0
+%_ptr_Function_float = OpTypePointer Function %float
+%float_0 = OpConstant %float 0
+%bool = OpTypeBool
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+%BaseColor = OpVariable %_ptr_Input_v4float Input
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%gl_FragColor = OpVariable %_ptr_Output_v4float Output
+)";
+
+  const std::string nonEntryFuncs =
+      R"(%foo_vf4_ = OpFunction %float None %14
+%bar = OpFunctionParameter %_ptr_Function_v4float
+%27 = OpLabel
+%28 = OpAccessChain %_ptr_Function_float %bar %uint_0
+%29 = OpLoad %float %28
+%30 = OpFOrdLessThan %bool %29 %float_0
+OpSelectionMerge %31 None
+OpBranchConditional %30 %32 %31
+%32 = OpLabel
+OpReturnValue %float_0
+%31 = OpLabel
+%33 = OpAccessChain %_ptr_Function_float %bar %uint_0
+%34 = OpLoad %float %33
+OpReturnValue %34
+OpFunctionEnd
+)";
+
+  const std::string before =
+      R"(%main = OpFunction %void None %10
+%22 = OpLabel
+%color = OpVariable %_ptr_Function_v4float Function
+%param = OpVariable %_ptr_Function_v4float Function
+%23 = OpLoad %v4float %BaseColor
+OpStore %param %23
+%24 = OpFunctionCall %float %foo_vf4_ %param
+%25 = OpCompositeConstruct %v4float %24 %24 %24 %24
+OpStore %color %25
+%26 = OpLoad %v4float %color
+OpStore %gl_FragColor %26
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string after =
+      R"(%false = OpConstantFalse %bool
+%main = OpFunction %void None %10
+%22 = OpLabel
+%35 = OpVariable %_ptr_Function_float Function
+%color = OpVariable %_ptr_Function_v4float Function
+%param = OpVariable %_ptr_Function_v4float Function
+%23 = OpLoad %v4float %BaseColor
+OpStore %param %23
+OpBranch %36
+%36 = OpLabel
+OpLoopMerge %37 %38 None
+OpBranch %39
+%39 = OpLabel
+%40 = OpAccessChain %_ptr_Function_float %param %uint_0
+%41 = OpLoad %float %40
+%42 = OpFOrdLessThan %bool %41 %float_0
+OpSelectionMerge %43 None
+OpBranchConditional %42 %44 %43
+%44 = OpLabel
+OpStore %35 %float_0
+OpBranch %37
+%43 = OpLabel
+%45 = OpAccessChain %_ptr_Function_float %param %uint_0
+%46 = OpLoad %float %45
+OpStore %35 %46
+OpBranch %37
+%38 = OpLabel
+OpBranchConditional %false %36 %37
+%37 = OpLabel
+%24 = OpLoad %float %35
+%25 = OpCompositeConstruct %v4float %24 %24 %24 %24
+OpStore %color %25
+%26 = OpLoad %v4float %color
+OpStore %gl_FragColor %26
+OpReturn
+OpFunctionEnd
+)";
+
+  SinglePassRunAndCheck<opt::InlinePass>(predefs + before + nonEntryFuncs, 
+      predefs + after + nonEntryFuncs, false, true);
+}
+TEST_F(InlineTest, EarlyReturnInLoopIsNotInlined) {
+  // #version 140
+  // 
+  // in vec4 BaseColor;
+  // 
+  // float foo(vec4 bar)
+  // {
+  //     while (true) {
+  //         if (bar.x < 0.0)
+  //             return 0.0;
+  //         return bar.x;
+  //     }
+  // }
+  // 
+  // void main()
+  // {
+  //     vec4 color = vec4(foo(BaseColor));
+  //     gl_FragColor = color; 
+  // }
+
+  const std::string assembly =
+      R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %BaseColor %gl_FragColor
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 140
+OpName %main "main"
+OpName %foo_vf4_ "foo(vf4;"
+OpName %bar "bar"
+OpName %color "color"
+OpName %BaseColor "BaseColor"
+OpName %param "param"
+OpName %gl_FragColor "gl_FragColor"
+%void = OpTypeVoid
+%10 = OpTypeFunction %void
+%float = OpTypeFloat 32
+%v4float = OpTypeVector %float 4
+%_ptr_Function_v4float = OpTypePointer Function %v4float
+%14 = OpTypeFunction %float %_ptr_Function_v4float
+%bool = OpTypeBool
+%true = OpConstantTrue %bool
+%uint = OpTypeInt 32 0
+%uint_0 = OpConstant %uint 0
+%_ptr_Function_float = OpTypePointer Function %float
+%float_0 = OpConstant %float 0
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+%BaseColor = OpVariable %_ptr_Input_v4float Input
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%gl_FragColor = OpVariable %_ptr_Output_v4float Output
+%main = OpFunction %void None %10
+%23 = OpLabel
+%color = OpVariable %_ptr_Function_v4float Function
+%param = OpVariable %_ptr_Function_v4float Function
+%24 = OpLoad %v4float %BaseColor
+OpStore %param %24
+%25 = OpFunctionCall %float %foo_vf4_ %param
+%26 = OpCompositeConstruct %v4float %25 %25 %25 %25
+OpStore %color %26
+%27 = OpLoad %v4float %color
+OpStore %gl_FragColor %27
+OpReturn
+OpFunctionEnd
+%foo_vf4_ = OpFunction %float None %14
+%bar = OpFunctionParameter %_ptr_Function_v4float
+%28 = OpLabel
+OpBranch %29
+%29 = OpLabel
+OpLoopMerge %30 %31 None
+OpBranch %32
+%32 = OpLabel
+OpBranchConditional %true %33 %30
+%33 = OpLabel
+%34 = OpAccessChain %_ptr_Function_float %bar %uint_0
+%35 = OpLoad %float %34
+%36 = OpFOrdLessThan %bool %35 %float_0
+OpSelectionMerge %37 None
+OpBranchConditional %36 %38 %37
+%38 = OpLabel
+OpReturnValue %float_0
+%37 = OpLabel
+%39 = OpAccessChain %_ptr_Function_float %bar %uint_0
+%40 = OpLoad %float %39
+OpReturnValue %40
+%31 = OpLabel
+OpBranch %29
+%30 = OpLabel
+%41 = OpUndef %float
+OpReturnValue %41
+OpFunctionEnd
+)";
+
+  SinglePassRunAndCheck<opt::InlinePass>(assembly, assembly, false, true);
+}
+
+TEST_F(InlineTest, ExternalFunctionIsNotInlined) {
+  // In particular, don't crash.
+  // See report https://github.com/KhronosGroup/SPIRV-Tools/issues/605
+  const std::string assembly =
+      R"(OpCapability Addresses
+OpCapability Kernel
+OpCapability Linkage
+OpMemoryModel Physical32 OpenCL
+OpEntryPoint Kernel %1 "entry_pt"
+OpDecorate %2 LinkageAttributes "external" Import
+%void = OpTypeVoid
+%4 = OpTypeFunction %void
+%2 = OpFunction %void None %4
+OpFunctionEnd
+%1 = OpFunction %void None %4
+%5 = OpLabel
+%6 = OpFunctionCall %void %2
+OpReturn
+OpFunctionEnd
+)";
+
+  SinglePassRunAndCheck<opt::InlinePass>(assembly, assembly, false, true);
+}
+
 // TODO(greg-lunarg): Add tests to verify handling of these cases:
 //
 //    Empty modules

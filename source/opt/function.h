@@ -59,8 +59,12 @@ class Function {
 
   iterator begin() { return iterator(&blocks_, blocks_.begin()); }
   iterator end() { return iterator(&blocks_, blocks_.end()); }
-  const_iterator cbegin() { return const_iterator(&blocks_, blocks_.cbegin()); }
-  const_iterator cend() { return const_iterator(&blocks_, blocks_.cend()); }
+  const_iterator cbegin() const {
+    return const_iterator(&blocks_, blocks_.cbegin());
+  }
+  const_iterator cend() const {
+    return const_iterator(&blocks_, blocks_.cend());
+  }
 
   // Runs the given function |f| on each instruction in this function, and
   // optionally on debug line instructions that might precede them.
@@ -81,7 +85,7 @@ class Function {
   std::unique_ptr<Instruction> def_inst_;
   // All parameters to this function.
   std::vector<std::unique_ptr<Instruction>> params_;
-  // All basic blocks inside this function.
+  // All basic blocks inside this function in specification order
   std::vector<std::unique_ptr<BasicBlock>> blocks_;
   // The OpFunctionEnd instruction.
   std::unique_ptr<Instruction> end_inst_;

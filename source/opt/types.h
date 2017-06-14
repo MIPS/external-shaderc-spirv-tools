@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "spirv-tools/libspirv.h"
-#include "spirv/1.1/spirv.h"
+#include "spirv/1.2/spirv.h"
 
 namespace spvtools {
 namespace opt {
@@ -262,7 +262,9 @@ class Struct : public Type {
   Struct(const std::vector<Type*>& element_types);
   Struct(const Struct&) = default;
 
-  void AddMemeberDecoration(uint32_t index, std::vector<uint32_t>&& decoration);
+  // Adds a decoration to the member at the given index.  The first word is the
+  // decoration enum, and the remaining words, if any, are its operands.
+  void AddMemberDecoration(uint32_t index, std::vector<uint32_t>&& decoration);
 
   bool IsSame(Type* that) const override;
   std::string str() const override;
