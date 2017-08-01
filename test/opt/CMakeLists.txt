@@ -53,8 +53,23 @@ add_spvtools_unittest(TARGET pass_freeze_spec_const
   LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET pass_block_merge
+  SRCS block_merge_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
 add_spvtools_unittest(TARGET pass_inline
   SRCS inline_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_insert_extract_elim
+  SRCS insert_extract_elim_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_local_ssa_elim
+  SRCS local_ssa_elim_test.cpp pass_utils.cpp
   LIBS SPIRV-Tools-opt
 )
 
@@ -65,6 +80,21 @@ add_spvtools_unittest(TARGET pass_local_single_block_elim
 
 add_spvtools_unittest(TARGET pass_local_access_chain_convert
   SRCS local_access_chain_convert_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_local_single_store_elim
+  SRCS local_single_store_elim_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_dead_branch_elim
+  SRCS dead_branch_elim_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_aggressive_dce
+  SRCS aggressive_dead_code_elim_test.cpp pass_utils.cpp
   LIBS SPIRV-Tools-opt
 )
 

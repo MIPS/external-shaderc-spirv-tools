@@ -81,9 +81,30 @@ class LocalSingleBlockLoadStoreElimPass : public Pass {
   // Add stores using |ptr_id| to |insts|
   void AddStores(uint32_t ptr_id, std::queue<ir::Instruction*>* insts);
 
+  // Return true if |op| is supported decorate.
+  inline bool IsDecorate(uint32_t op) const {
+    return (op == SpvOpDecorate || op == SpvOpDecorateId);
+  }
+
+  // Return true if all uses of |id| are only name or decorate ops.
+  bool HasOnlyNamesAndDecorates(uint32_t id) const;
+
+  // Kill all name and decorate ops using |inst|
+  void KillNamesAndDecorates(ir::Instruction* inst);
+
+  // Kill all name and decorate ops using |id|
+  void KillNamesAndDecorates(uint32_t id);
+
+  // Collect all named or decorated ids in module
+  void FindNamedOrDecoratedIds();
+
   // Delete |inst| and iterate DCE on all its operands. Won't delete
   // labels. 
   void DCEInst(ir::Instruction* inst);
+
+  // Return true if all uses of |varId| are only through supported reference
+  // operations ie. loads and store. Also cache in supported_ref_ptrs_;
+  bool HasOnlySupportedRefs(uint32_t varId);
 
   // On all entry point functions, within each basic block, eliminate
   // loads and stores to function variables where possible. For
@@ -102,6 +123,12 @@ class LocalSingleBlockLoadStoreElimPass : public Pass {
   inline uint32_t TakeNextId() {
     return next_id_++;
   }
+
+  // Initialize extensions whitelist
+  void InitExtensions();
+
+  // Return true if all extensions in this module are supported by this pass.
+  bool AllExtensionsSupported() const;
 
   void Initialize(ir::Module* module);
   Pass::Status ProcessImpl();
@@ -141,6 +168,16 @@ class LocalSingleBlockLoadStoreElimPass : public Pass {
   // for example, a load through an access chain. A variable is removed
   // from this set each time a new store of that variable is encountered.
   std::unordered_set<uint32_t> pinned_vars_;
+
+  // named or decorated ids
+  std::unordered_set<uint32_t> named_or_decorated_ids_;
+
+  // Extensions supported by this pass.
+  std::unordered_set<std::string> extensions_whitelist_;
+
+  // Variables that are only referenced by supported operations for this
+  // pass ie. loads and stores.
+  std::unordered_set<uint32_t> supported_ref_ptrs_;
 
   // Next unused ID
   uint32_t next_id_;

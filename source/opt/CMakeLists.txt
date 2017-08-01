@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 add_library(SPIRV-Tools-opt
+  aggressive_dead_code_elim_pass.h
   basic_block.h
+  block_merge_pass.h
   build_module.h
   compact_ids_pass.h
   constants.h
+  dead_branch_elim_pass.h
   def_use_manager.h
   eliminate_dead_constant_pass.h
   flatten_decoration_pass.h
@@ -23,10 +26,13 @@ add_library(SPIRV-Tools-opt
   fold_spec_constant_op_and_composite_pass.h
   freeze_spec_constant_value_pass.h
   inline_pass.h
+  insert_extract_elim.h
   instruction.h
   ir_loader.h
   local_access_chain_convert_pass.h
   local_single_block_elim_pass.h
+  local_single_store_elim_pass.h
+  local_ssa_elim_pass.h
   log.h
   module.h
   null_pass.h
@@ -40,20 +46,26 @@ add_library(SPIRV-Tools-opt
   type_manager.h
   unify_const_pass.h
 
+  aggressive_dead_code_elim_pass.cpp
   basic_block.cpp
+  block_merge_pass.cpp
   build_module.cpp
   compact_ids_pass.cpp
   def_use_manager.cpp
+  dead_branch_elim_pass.cpp
   eliminate_dead_constant_pass.cpp
   flatten_decoration_pass.cpp
   function.cpp
   fold_spec_constant_op_and_composite_pass.cpp
   freeze_spec_constant_value_pass.cpp
   inline_pass.cpp
+  insert_extract_elim.cpp
   instruction.cpp
   ir_loader.cpp
   local_access_chain_convert_pass.cpp
   local_single_block_elim_pass.cpp
+  local_single_store_elim_pass.cpp
+  local_ssa_elim_pass.cpp
   module.cpp
   set_spec_constant_default_value_pass.cpp
   optimizer.cpp
@@ -76,7 +88,10 @@ target_link_libraries(SPIRV-Tools-opt
 
 set_property(TARGET SPIRV-Tools-opt PROPERTY FOLDER "SPIRV-Tools libraries")
 
-install(TARGETS SPIRV-Tools-opt
-  RUNTIME DESTINATION bin
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib)
+if(ENABLE_SPIRV_TOOLS_INSTALL)
+  install(TARGETS SPIRV-Tools-opt
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif(ENABLE_SPIRV_TOOLS_INSTALL)
+    

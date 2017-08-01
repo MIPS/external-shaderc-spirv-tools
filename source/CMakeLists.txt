@@ -115,7 +115,10 @@ spvtools_core_tables("1.2")
 spvtools_enum_string_mapping("1.2")
 spvtools_opencl_tables("1.0")
 spvtools_glsl_tables("1.0")
+spvtools_vendor_tables("spv-amd-shader-explicit-vertex-parameter")
+spvtools_vendor_tables("spv-amd-shader-trinary-minmax")
 spvtools_vendor_tables("spv-amd-gcn-shader")
+spvtools_vendor_tables("spv-amd-shader-ballot")
 
 spvtools_vimsyntax("1.2" "1.0")
 add_custom_target(spirv-tools-vimsyntax DEPENDS ${VIMSYNTAX_FILE})
@@ -185,6 +188,7 @@ add_custom_target(spirv-tools-build-version
    DEPENDS ${SPIRV_TOOLS_BUILD_VERSION_INC})
 set_property(TARGET spirv-tools-build-version PROPERTY FOLDER "SPIRV-Tools build")
 
+add_subdirectory(comp)
 add_subdirectory(opt)
 
 set(SPIRV_SOURCES
@@ -285,7 +289,9 @@ target_include_directories(${SPIRV_TOOLS}
   )
 set_property(TARGET ${SPIRV_TOOLS} PROPERTY FOLDER "SPIRV-Tools libraries")
 
-install(TARGETS ${SPIRV_TOOLS}
-  RUNTIME DESTINATION bin
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib)
+if(ENABLE_SPIRV_TOOLS_INSTALL)
+  install(TARGETS ${SPIRV_TOOLS}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif(ENABLE_SPIRV_TOOLS_INSTALL)
