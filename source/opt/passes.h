@@ -18,12 +18,13 @@
 // A single header to include all passes.
 
 #include "block_merge_pass.h"
+#include "common_uniform_elim_pass.h"
 #include "compact_ids_pass.h"
 #include "dead_branch_elim_pass.h"
 #include "eliminate_dead_constant_pass.h"
 #include "flatten_decoration_pass.h"
 #include "fold_spec_constant_op_and_composite_pass.h"
-#include "inline_pass.h"
+#include "inline_exhaustive_pass.h"
 #include "insert_extract_elim.h"
 #include "local_single_block_elim_pass.h"
 #include "local_single_store_elim_pass.h"

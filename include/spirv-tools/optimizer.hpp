@@ -208,7 +208,7 @@ Optimizer::PassToken CreateBlockMergePass();
 // passes. As the inlining is exhaustive, there is no attempt to optimize for
 // size or runtime performance. Functions that are not designated as entry
 // points are not changed.
-Optimizer::PassToken CreateInlinePass();
+Optimizer::PassToken CreateInlineExhaustivePass();
   
 // Creates a single-block local variable load/store elimination pass.
 // For every entry point function, do single block memory optimization of 
@@ -340,6 +340,20 @@ Optimizer::PassToken CreateInsertExtractElimPass();
 // local loads and stores, effectively propagating constant values where
 // possible.
 Optimizer::PassToken CreateDeadBranchElimPass();
+
+// Creates a pass to consolidate uniform references.
+// For each entry point function in the module, first change all constant index
+// access chain loads into equivalent composite extracts. Then consolidate 
+// identical uniform loads into one uniform load. Finally, consolidate
+// identical uniform extracts into one uniform extract. This may require
+// moving a load or extract to a point which dominates all uses.
+//
+// This pass requires a module to have structured control flow ie shader
+// capability. It also requires logical addressing ie Addresses capability
+// is not enabled. It also currently does not support any extensions.
+//
+// This pass currently only optimizes loads with a single index.
+Optimizer::PassToken CreateCommonUniformElimPass();
 
 // Create aggressive dead code elimination pass
 // This pass eliminates unused code from functions. In addition,
