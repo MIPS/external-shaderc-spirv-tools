@@ -14,17 +14,65 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "inline_exhaustive_pass.h"
+#include "inline_opaque_pass.h"
 
 namespace spvtools {
 namespace opt {
 
-bool InlineExhaustivePass::InlineExhaustive(ir::Function* func) {
+namespace {
+
+  const uint32_t kTypePointerTypeIdInIdx = 1;
+
+} // anonymous namespace
+
+bool InlineOpaquePass::IsOpaqueType(uint32_t typeId) {
+  const ir::Instruction* typeInst = def_use_mgr_->GetDef(typeId);
+  switch (typeInst->opcode()) {
+    case SpvOpTypeSampler:
+    case SpvOpTypeImage:
+    case SpvOpTypeSampledImage:
+      return true;
+    case SpvOpTypePointer:
+      return IsOpaqueType(typeInst->GetSingleWordInOperand(
+          kTypePointerTypeIdInIdx));
+    default:
+      break;
+  }
+  // TODO(greg-lunarg): Handle arrays containing opaque type
+  if (typeInst->opcode() != SpvOpTypeStruct)
+    return false;
+  // Return true if any member is opaque
+  int ocnt = 0;
+  typeInst->ForEachInId([&ocnt,this](const uint32_t* tid) {
+    if (ocnt == 0 && IsOpaqueType(*tid)) ++ocnt;
+  });
+  return ocnt > 0;
+}
+
+bool InlineOpaquePass::HasOpaqueArgsOrReturn(const ir::Instruction* callInst) {
+  // Check return type
+  if (IsOpaqueType(callInst->type_id()))
+    return true;
+  // Check args
+  int icnt = 0;
+  int ocnt = 0;
+  callInst->ForEachInId([&icnt,&ocnt,this](const uint32_t *iid) {
+    if (icnt > 0) {
+      const ir::Instruction* argInst = def_use_mgr_->GetDef(*iid);
+      if (IsOpaqueType(argInst->type_id()))
+        ++ocnt;
+    }
+    ++icnt;
+  });
+  return ocnt > 0;
+}
+
+bool InlineOpaquePass::InlineOpaque(ir::Function* func) {
   bool modified = false;
   // Using block iterators here because of block erasures and insertions.
   for (auto bi = func->begin(); bi != func->end(); ++bi) {
     for (auto ii = bi->begin(); ii != bi->end();) {
-      if (IsInlinableFunctionCall(&*ii)) {
+      if (IsInlinableFunctionCall(&*ii) && HasOpaqueArgsOrReturn(&*ii)) {
         // Inline call.
         std::vector<std::unique_ptr<ir::BasicBlock>> newBlocks;
         std::vector<std::unique_ptr<ir::Instruction>> newVars;
@@ -49,23 +97,23 @@ bool InlineExhaustivePass::InlineExhaustive(ir::Function* func) {
   return modified;
 }
 
-void InlineExhaustivePass::Initialize(ir::Module* module) {
+void InlineOpaquePass::Initialize(ir::Module* module) {
   InitializeInline(module);
 };
 
-Pass::Status InlineExhaustivePass::ProcessImpl() {
-  // Attempt exhaustive inlining on each entry point function in module
+Pass::Status InlineOpaquePass::ProcessImpl() {
+  // Do opaque inlining on each function in entry point call tree
   ProcessFunction pfn = [this](ir::Function* fp) {
-    return InlineExhaustive(fp);
+    return InlineOpaque(fp);
   };
   bool modified = ProcessEntryPointCallTree(pfn, module_);
   FinalizeNextId(module_);
   return modified ? Status::SuccessWithChange : Status::SuccessWithoutChange;
 }
 
-InlineExhaustivePass::InlineExhaustivePass() {}
+InlineOpaquePass::InlineOpaquePass() {}
 
-Pass::Status InlineExhaustivePass::Process(ir::Module* module) {
+Pass::Status InlineOpaquePass::Process(ir::Module* module) {
   Initialize(module);
   return ProcessImpl();
 }

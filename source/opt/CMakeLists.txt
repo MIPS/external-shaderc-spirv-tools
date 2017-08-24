@@ -28,6 +28,7 @@ add_library(SPIRV-Tools-opt
   freeze_spec_constant_value_pass.h
   inline_pass.h
   inline_exhaustive_pass.h
+  inline_opaque_pass.h
   insert_extract_elim.h
   instruction.h
   ir_loader.h
@@ -64,6 +65,7 @@ add_library(SPIRV-Tools-opt
   freeze_spec_constant_value_pass.cpp
   inline_pass.cpp
   inline_exhaustive_pass.cpp
+  inline_opaque_pass.cpp
   insert_extract_elim.cpp
   instruction.cpp
   ir_loader.cpp
@@ -75,6 +77,7 @@ add_library(SPIRV-Tools-opt
   set_spec_constant_default_value_pass.cpp
   optimizer.cpp
   mem_pass.cpp
+  pass.cpp
   pass_manager.cpp
   strip_debug_info_pass.cpp
   types.cpp

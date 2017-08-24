@@ -807,6 +807,251 @@ OpFunctionEnd
       defs_before + func_before, defs_after + func_after, true, true);
 }
 
+TEST_F(AggressiveDCETest, NoParamElim) {
+  // This demonstrates that unused parameters are not eliminated, but
+  // dead uses of them are.
+  // #version 140
+  // 
+  // in vec4 BaseColor;
+  // 
+  // vec4 foo(vec4 v1, vec4 v2)
+  // {
+  //     vec4 t = -v1;
+  //     return v2;
+  // }
+  // 
+  // void main()
+  // {
+  //     vec4 dead;
+  //     gl_FragColor = foo(dead, BaseColor);
+  // }
+
+  const std::string defs_before =
+      R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %gl_FragColor %BaseColor
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 140
+OpName %main "main"
+OpName %foo_vf4_vf4_ "foo(vf4;vf4;" 
+OpName %v1 "v1"
+OpName %v2 "v2"
+OpName %t "t"
+OpName %gl_FragColor "gl_FragColor" 
+OpName %dead "dead"
+OpName %BaseColor "BaseColor"
+OpName %param "param" 
+OpName %param_0 "param"
+%void = OpTypeVoid
+%13 = OpTypeFunction %void
+%float = OpTypeFloat 32
+%v4float = OpTypeVector %float 4
+%_ptr_Function_v4float = OpTypePointer Function %v4float
+%17 = OpTypeFunction %v4float %_ptr_Function_v4float %_ptr_Function_v4float
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%gl_FragColor = OpVariable %_ptr_Output_v4float Output
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+%BaseColor = OpVariable %_ptr_Input_v4float Input
+%main = OpFunction %void None %13
+%20 = OpLabel
+%dead = OpVariable %_ptr_Function_v4float Function
+%param = OpVariable %_ptr_Function_v4float Function
+%param_0 = OpVariable %_ptr_Function_v4float Function
+%21 = OpLoad %v4float %dead
+OpStore %param %21
+%22 = OpLoad %v4float %BaseColor
+OpStore %param_0 %22
+%23 = OpFunctionCall %v4float %foo_vf4_vf4_ %param %param_0
+OpStore %gl_FragColor %23
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string defs_after =
+      R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %gl_FragColor %BaseColor
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 140
+OpName %main "main"
+OpName %foo_vf4_vf4_ "foo(vf4;vf4;"
+OpName %v1 "v1"
+OpName %v2 "v2"
+OpName %gl_FragColor "gl_FragColor"
+OpName %dead "dead"
+OpName %BaseColor "BaseColor"
+OpName %param "param"
+OpName %param_0 "param"
+%void = OpTypeVoid
+%13 = OpTypeFunction %void
+%float = OpTypeFloat 32
+%v4float = OpTypeVector %float 4
+%_ptr_Function_v4float = OpTypePointer Function %v4float
+%17 = OpTypeFunction %v4float %_ptr_Function_v4float %_ptr_Function_v4float
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%gl_FragColor = OpVariable %_ptr_Output_v4float Output
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+%BaseColor = OpVariable %_ptr_Input_v4float Input
+%main = OpFunction %void None %13
+%20 = OpLabel
+%dead = OpVariable %_ptr_Function_v4float Function
+%param = OpVariable %_ptr_Function_v4float Function
+%param_0 = OpVariable %_ptr_Function_v4float Function
+%21 = OpLoad %v4float %dead
+OpStore %param %21
+%22 = OpLoad %v4float %BaseColor
+OpStore %param_0 %22
+%23 = OpFunctionCall %v4float %foo_vf4_vf4_ %param %param_0
+OpStore %gl_FragColor %23
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string func_before =
+      R"(%foo_vf4_vf4_ = OpFunction %v4float None %17
+%v1 = OpFunctionParameter %_ptr_Function_v4float
+%v2 = OpFunctionParameter %_ptr_Function_v4float
+%24 = OpLabel
+%t = OpVariable %_ptr_Function_v4float Function
+%25 = OpLoad %v4float %v1 
+%26 = OpFNegate %v4float %25
+OpStore %t %26 
+%27 = OpLoad %v4float %v2 
+OpReturnValue %27
+OpFunctionEnd
+)";
+
+  const std::string func_after =
+      R"(%foo_vf4_vf4_ = OpFunction %v4float None %17
+%v1 = OpFunctionParameter %_ptr_Function_v4float
+%v2 = OpFunctionParameter %_ptr_Function_v4float
+%24 = OpLabel
+%27 = OpLoad %v4float %v2
+OpReturnValue %27
+OpFunctionEnd
+)";
+
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
+      defs_before + func_before, defs_after + func_after, true, true);
+}
+
+TEST_F(AggressiveDCETest, ElimOpaque) {
+  // SPIR-V not representable from GLSL; not generatable from HLSL
+  // for the moment.
+
+  const std::string defs_before =
+      R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %outColor %texCoords
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 140
+OpName %main "main"
+OpName %S_t "S_t"
+OpMemberName %S_t 0 "v0"
+OpMemberName %S_t 1 "v1"
+OpMemberName %S_t 2 "smp"
+OpName %outColor "outColor"
+OpName %sampler15 "sampler15"
+OpName %s0 "s0"
+OpName %texCoords "texCoords"
+OpDecorate %sampler15 DescriptorSet 0
+%void = OpTypeVoid
+%9 = OpTypeFunction %void
+%float = OpTypeFloat 32
+%v2float = OpTypeVector %float 2
+%v4float = OpTypeVector %float 4
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%outColor = OpVariable %_ptr_Output_v4float Output
+%14 = OpTypeImage %float 2D 0 0 0 1 Unknown
+%15 = OpTypeSampledImage %14
+%S_t = OpTypeStruct %v2float %v2float %15
+%_ptr_Function_S_t = OpTypePointer Function %S_t
+%17 = OpTypeFunction %void %_ptr_Function_S_t
+%_ptr_UniformConstant_15 = OpTypePointer UniformConstant %15
+%_ptr_Function_15 = OpTypePointer Function %15
+%sampler15 = OpVariable %_ptr_UniformConstant_15 UniformConstant
+%int = OpTypeInt 32 1
+%int_0 = OpConstant %int 0
+%int_2 = OpConstant %int 2
+%_ptr_Function_v2float = OpTypePointer Function %v2float
+%_ptr_Input_v2float = OpTypePointer Input %v2float
+%texCoords = OpVariable %_ptr_Input_v2float Input
+)";
+
+  const std::string defs_after =
+      R"(OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %outColor %texCoords
+OpExecutionMode %main OriginUpperLeft
+OpSource GLSL 140
+OpName %main "main"
+OpName %S_t "S_t"
+OpMemberName %S_t 0 "v0"
+OpMemberName %S_t 1 "v1"
+OpMemberName %S_t 2 "smp"
+OpName %outColor "outColor"
+OpName %sampler15 "sampler15"
+OpName %texCoords "texCoords"
+OpDecorate %sampler15 DescriptorSet 0
+%void = OpTypeVoid
+%9 = OpTypeFunction %void
+%float = OpTypeFloat 32
+%v2float = OpTypeVector %float 2
+%v4float = OpTypeVector %float 4
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%outColor = OpVariable %_ptr_Output_v4float Output
+%14 = OpTypeImage %float 2D 0 0 0 1 Unknown
+%15 = OpTypeSampledImage %14
+%S_t = OpTypeStruct %v2float %v2float %15
+%_ptr_Function_S_t = OpTypePointer Function %S_t
+%17 = OpTypeFunction %void %_ptr_Function_S_t
+%_ptr_UniformConstant_15 = OpTypePointer UniformConstant %15
+%_ptr_Function_15 = OpTypePointer Function %15
+%sampler15 = OpVariable %_ptr_UniformConstant_15 UniformConstant
+%int = OpTypeInt 32 1
+%int_0 = OpConstant %int 0
+%int_2 = OpConstant %int 2
+%_ptr_Function_v2float = OpTypePointer Function %v2float
+%_ptr_Input_v2float = OpTypePointer Input %v2float
+%texCoords = OpVariable %_ptr_Input_v2float Input
+)";
+
+  const std::string func_before =
+      R"(%main = OpFunction %void None %9
+%25 = OpLabel
+%s0 = OpVariable %_ptr_Function_S_t Function 
+%26 = OpLoad %v2float %texCoords
+%27 = OpLoad %S_t %s0 
+%28 = OpCompositeInsert %S_t %26 %27 0
+%29 = OpLoad %15 %sampler15
+%30 = OpCompositeInsert %S_t %29 %28 2
+OpStore %s0 %30
+%31 = OpImageSampleImplicitLod %v4float %29 %26
+OpStore %outColor %31
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string func_after =
+        R"(%main = OpFunction %void None %9
+%25 = OpLabel
+%26 = OpLoad %v2float %texCoords
+%29 = OpLoad %15 %sampler15
+%31 = OpImageSampleImplicitLod %v4float %29 %26
+OpStore %outColor %31
+OpReturn
+OpFunctionEnd
+)";
+
+  SinglePassRunAndCheck<opt::AggressiveDCEPass>(
+      defs_before + func_before, defs_after + func_after, true, true);
+}
+
+
 // TODO(greg-lunarg): Add tests to verify handling of these cases:
 //
 //    Check that logical addressing required
