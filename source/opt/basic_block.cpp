@@ -17,6 +17,54 @@
 namespace spvtools {
 namespace ir {
 
+const Instruction* BasicBlock::GetMergeInst() const {
+  const Instruction* result = nullptr;
+  // If it exists, the merge instruction immediately precedes the
+  // terminator.
+  auto iter = ctail();
+  if (iter != cbegin()) {
+    --iter;
+    const auto opcode = iter->opcode();
+    if (opcode == SpvOpLoopMerge || opcode  == SpvOpSelectionMerge) {
+      result = &*iter;
+    }
+  }
+  return result;
+}
+
+Instruction* BasicBlock::GetMergeInst() {
+  Instruction* result = nullptr;
+  // If it exists, the merge instruction immediately precedes the
+  // terminator.
+  auto iter = tail();
+  if (iter != begin()) {
+    --iter;
+    const auto opcode = iter->opcode();
+    if (opcode == SpvOpLoopMerge || opcode  == SpvOpSelectionMerge) {
+      result = &*iter;
+    }
+  }
+  return result;
+}
+
+const Instruction* BasicBlock::GetLoopMergeInst() const {
+  if (auto* merge = GetMergeInst()) {
+    if (merge->opcode() == SpvOpLoopMerge) {
+      return merge;
+    }
+  }
+  return nullptr;
+}
+
+Instruction* BasicBlock::GetLoopMergeInst() {
+  if (auto* merge = GetMergeInst()) {
+    if (merge->opcode() == SpvOpLoopMerge) {
+      return merge;
+    }
+  }
+  return nullptr;
+}
+
 void BasicBlock::ForEachSuccessorLabel(
     const std::function<void(const uint32_t)>& f) {
   const auto br = &*insts_.back();
@@ -35,6 +83,19 @@ void BasicBlock::ForEachSuccessorLabel(
     default:
       break;
   }
+}
+
+void BasicBlock::ForMergeAndContinueLabel(
+    const std::function<void(const uint32_t)>& f) {
+  auto ii = insts_.end();
+  --ii;
+  if (ii == insts_.begin()) return;
+  --ii;
+  if ((*ii)->opcode() == SpvOpSelectionMerge || 
+      (*ii)->opcode() == SpvOpLoopMerge)
+    (*ii)->ForEachInId([&f](const uint32_t* idp) {
+      f(*idp);
+    });
 }
 
 }  // namespace ir
