@@ -13,6 +13,9 @@
 # limitations under the License.
 
 cmake_minimum_required(VERSION 2.8.12)
+if (POLICY CMP0048)
+  cmake_policy(SET CMP0048 NEW)
+endif()
 if (POLICY CMP0054)
   # Avoid dereferencing variables or interpret keywords that have been
   # quoted or bracketed.
@@ -54,7 +57,9 @@ option(SKIP_SPIRV_TOOLS_INSTALL "Skip installation" ${SKIP_SPIRV_TOOLS_INSTALL})
 if(NOT ${SKIP_SPIRV_TOOLS_INSTALL})
   set(ENABLE_SPIRV_TOOLS_INSTALL ON)
 endif()
- 
+
+option(SPIRV_BUILD_COMPRESSION "Build SPIR-V compressing codec" OFF)
+
 option(SPIRV_WERROR "Enable error on warning" ON)
 if(("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang"))
   set(COMPILER_IS_LIKE_GNU TRUE)
@@ -182,10 +187,13 @@ if(ENABLE_SPIRV_TOOLS_INSTALL)
       ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/libspirv.h
       ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/libspirv.hpp
       ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/optimizer.hpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/include/spirv-tools/linker.hpp
     DESTINATION
       ${CMAKE_INSTALL_INCLUDEDIR}/spirv-tools/)
 endif(ENABLE_SPIRV_TOOLS_INSTALL)
 
-add_test(NAME spirv-tools-copyrights
-         COMMAND ${PYTHON_EXECUTABLE} utils/check_copyright.py
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+if (NOT "${SPIRV_SKIP_TESTS}")
+  add_test(NAME spirv-tools-copyrights
+           COMMAND ${PYTHON_EXECUTABLE} utils/check_copyright.py
+           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+ endif()

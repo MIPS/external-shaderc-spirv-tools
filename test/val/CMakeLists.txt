@@ -15,7 +15,6 @@
 set(VAL_TEST_COMMON_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/../test_fixture.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../unit_spirv.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/../unit_spirv.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/val_fixtures.h
   ${CMAKE_CURRENT_SOURCE_DIR}/val_fixtures.cpp
 )
@@ -71,6 +70,30 @@ add_spvtools_unittest(TARGET val_data
 
 add_spvtools_unittest(TARGET val_type_unique
 	SRCS val_type_unique_test.cpp
+       ${VAL_TEST_COMMON_SRCS}
+  LIBS ${SPIRV_TOOLS}
+)
+
+add_spvtools_unittest(TARGET val_arithmetics
+	SRCS val_arithmetics_test.cpp
+       ${VAL_TEST_COMMON_SRCS}
+  LIBS ${SPIRV_TOOLS}
+)
+
+add_spvtools_unittest(TARGET val_conversion
+	SRCS val_conversion_test.cpp
+       ${VAL_TEST_COMMON_SRCS}
+  LIBS ${SPIRV_TOOLS}
+)
+
+add_spvtools_unittest(TARGET val_logicals
+	SRCS val_logicals_test.cpp
+       ${VAL_TEST_COMMON_SRCS}
+  LIBS ${SPIRV_TOOLS}
+)
+
+add_spvtools_unittest(TARGET val_bitwise
+	SRCS val_bitwise_test.cpp
        ${VAL_TEST_COMMON_SRCS}
   LIBS ${SPIRV_TOOLS}
 )

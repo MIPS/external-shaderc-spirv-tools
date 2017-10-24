@@ -36,7 +36,7 @@ namespace opt {
 class InsertExtractElimPass : public Pass {
  public:
   InsertExtractElimPass();
-  const char* name() const override { return "insert_extract_elim"; }
+  const char* name() const override { return "eliminate-insert-extract"; }
   Status Process(ir::Module*) override;
 
  private:
@@ -51,6 +51,9 @@ class InsertExtractElimPass : public Pass {
   // the extract.
   bool ExtInsConflict(
     const ir::Instruction* extInst, const ir::Instruction* insInst) const;
+
+  // Return true if |typeId| is a vector type
+  bool IsVectorType(uint32_t typeId);
 
   // Look for OpExtract on sequence of OpInserts in |func|. If there is an
   // insert with identical indices, replace the extract with the value

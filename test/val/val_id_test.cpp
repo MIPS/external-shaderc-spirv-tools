@@ -218,6 +218,20 @@ TEST_F(ValidateIdWithMessage, OpGroupDecorateGood) {
   CompileSuccessfully(spirv.c_str());
   EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
 }
+TEST_F(ValidateIdWithMessage, OpDecorationGroupBad) {
+  string spirv = kGLSL450MemoryModel + R"(
+%1 = OpDecorationGroup
+     OpDecorate %1 Uniform
+     OpDecorate %1 GLSLShared
+     OpMemberDecorate %1 0 Constant
+    )";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("Result id of OpDecorationGroup can only "
+                        "be targeted by OpName, OpGroupDecorate, "
+                        "OpDecorate, and OpGroupMemberDecorate"));
+}
 TEST_F(ValidateIdWithMessage, OpGroupDecorateDecorationGroupBad) {
   string spirv = R"(
     OpCapability Shader
@@ -330,10 +344,11 @@ TEST_F(ValidateIdWithMessage, OpEntryPointReturnTypeBad) {
   string spirv = kGLSL450MemoryModel + R"(
      OpEntryPoint GLCompute %3 ""
 %1 = OpTypeInt 32 0
+%ret = OpConstant %1 0
 %2 = OpTypeFunction %1
 %3 = OpFunction %1 None %2
 %4 = OpLabel
-     OpReturn
+     OpReturnValue %ret
      OpFunctionEnd)";
   CompileSuccessfully(spirv.c_str());
   EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
@@ -1878,7 +1893,9 @@ TEST_F(ValidateIdWithMessage, OpLoadVarPtrOpSelectGood) {
 
 // Without the VariablePointers Capability, OpLoad will not allow loading
 // through a variable pointer.
-TEST_F(ValidateIdWithMessage, OpLoadVarPtrOpSelectBad) {
+// Disabled since using OpSelect with pointers without VariablePointers will
+// fail LogicalsPass.
+TEST_F(ValidateIdWithMessage, DISABLED_OpLoadVarPtrOpSelectBad) {
   std::string result_strategy = R"(
     %isneg     = OpSLessThan %bool %i %zero
     %varptr    = OpSelect %f32ptr %isneg %ptr1 %ptr2
@@ -2002,7 +2019,8 @@ TEST_F(ValidateIdWithMessage, OpLoadPointerBad) {
               HasSubstr("ID 8 has not been defined"));
 }
 
-TEST_F(ValidateIdWithMessage, OpLoadLogicalPointerBad) {
+// Disabled as bitcasting type to object is now not valid.
+TEST_F(ValidateIdWithMessage, DISABLED_OpLoadLogicalPointerBad) {
   string spirv = kGLSL450MemoryModel + R"(
 %1 = OpTypeVoid
 %2 = OpTypeInt 32 0
@@ -2062,7 +2080,8 @@ TEST_F(ValidateIdWithMessage, OpStorePointerBad) {
               HasSubstr("OpStore Pointer <id> '3' is not a logical pointer."));
 }
 
-TEST_F(ValidateIdWithMessage, OpStoreLogicalPointerBad) {
+// Disabled as bitcasting type to object is now not valid.
+TEST_F(ValidateIdWithMessage, DISABLED_OpStoreLogicalPointerBad) {
   string spirv = kGLSL450MemoryModel + R"(
 %1 = OpTypeVoid
 %2 = OpTypeInt 32 0
@@ -2086,7 +2105,9 @@ TEST_F(ValidateIdWithMessage, OpStoreLogicalPointerBad) {
 
 // Without the VariablePointer Capability, OpStore should may not store
 // through a variable pointer.
-TEST_F(ValidateIdWithMessage, OpStoreVarPtrBad) {
+// Disabled since using OpSelect with pointers without VariablePointers will
+// fail LogicalsPass.
+TEST_F(ValidateIdWithMessage, DISABLED_OpStoreVarPtrBad) {
   std::string result_strategy = R"(
     %isneg     = OpSLessThan %bool %i %zero
     %varptr    = OpSelect %f32ptr %isneg %ptr1 %ptr2
@@ -2932,13 +2953,29 @@ TEST_F(ValidateIdWithMessage, OpFunctionResultTypeBad) {
 %4 = OpTypeFunction %1 %2 %2
 %5 = OpFunction %2 None %4
 %6 = OpLabel
-     OpReturn
+     OpReturnValue %3
      OpFunctionEnd)";
   CompileSuccessfully(spirv.c_str());
   EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
   EXPECT_THAT(getDiagnosticString(),
               HasSubstr("OpFunction Result Type <id> '2' does not match the "
                         "Function Type <id> '2's return type."));
+}
+TEST_F(ValidateIdWithMessage, OpReturnValueTypeBad) {
+  string spirv = kGLSL450MemoryModel + R"(
+%1 = OpTypeInt 32 0
+%2 = OpTypeFloat 32
+%3 = OpConstant %2 0
+%4 = OpTypeFunction %1
+%5 = OpFunction %1 None %4
+%6 = OpLabel
+     OpReturnValue %3
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("OpReturnValue Value <id> '3's type does not match "
+                        "OpFunction's return type."));
 }
 TEST_F(ValidateIdWithMessage, OpFunctionFunctionTypeBad) {
   string spirv = kGLSL450MemoryModel + R"(
@@ -3134,7 +3171,9 @@ OpFunctionEnd)";
 // However, the OpSelect validation does not catch this today. Therefore, it is
 // caught by the OpSampledImage validation. If the OpSelect validation code is
 // updated, the error message for this test may change.
-TEST_F(ValidateIdWithMessage, OpSampledImageUsedInOpSelectBad) {
+//
+// Disabled since OpSelect catches this now.
+TEST_F(ValidateIdWithMessage, DISABLED_OpSampledImageUsedInOpSelectBad) {
   string spirv = kGLSL450MemoryModel + sampledImageSetup + R"(
 %smpld_img  = OpSampledImage %sampled_image_type %image_inst %sampler_inst
 %select_img = OpSelect %sampled_image_type %spec_true %smpld_img %smpld_img
@@ -3586,7 +3625,243 @@ TEST_F(ValidateIdWithMessage, OpFunctionCallArgumentCountBar) {
 // TODO: OpSatConvertUToS
 // TODO: OpVectorExtractDynamic
 // TODO: OpVectorInsertDynamic
-// TODO: OpVectorShuffle
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleIntGood) {
+  string spirv = kGLSL450MemoryModel + R"(
+%int = OpTypeInt 32 0
+%ivec3 = OpTypeVector %int 3
+%ivec4 = OpTypeVector %int 4
+%ptr_ivec3 = OpTypePointer Function %ivec3
+%undef = OpUndef %ivec4
+%int_42 = OpConstant %int 42
+%int_0 = OpConstant %int 0
+%int_2 = OpConstant %int 2
+%1 = OpConstantComposite %ivec3 %int_42 %int_0 %int_2
+%2 = OpTypeFunction %ivec3
+%3 = OpFunction %ivec3 None %2
+%4 = OpLabel
+%var = OpVariable %ptr_ivec3 Function %1
+%5 = OpLoad %ivec3 %var
+%6 = OpVectorShuffle %ivec3 %5 %undef 2 1 0
+     OpReturnValue %6
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
+}
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleFloatGood) {
+  string spirv = kGLSL450MemoryModel + R"(
+%float = OpTypeFloat 32
+%vec2 = OpTypeVector %float 2
+%vec3 = OpTypeVector %float 3
+%vec4 = OpTypeVector %float 4
+%ptr_vec2 = OpTypePointer Function %vec2
+%ptr_vec3 = OpTypePointer Function %vec3
+%float_1 = OpConstant %float 1
+%float_2 = OpConstant %float 2
+%1 = OpConstantComposite %vec2 %float_2 %float_1
+%2 = OpConstantComposite %vec3 %float_1 %float_2 %float_2
+%3 = OpTypeFunction %vec4
+%4 = OpFunction %vec4 None %3
+%5 = OpLabel
+%var = OpVariable %ptr_vec2 Function %1
+%var2 = OpVariable %ptr_vec3 Function %2
+%6 = OpLoad %vec2 %var
+%7 = OpLoad %vec3 %var2
+%8 = OpVectorShuffle %vec4 %6 %7 4 3 1 0xffffffff
+     OpReturnValue %8
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_SUCCESS, ValidateInstructions());
+}
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleScalarResultType) {
+  string spirv = kGLSL450MemoryModel + R"(
+%float = OpTypeFloat 32
+%vec2 = OpTypeVector %float 2
+%ptr_vec2 = OpTypePointer Function %vec2
+%float_1 = OpConstant %float 1
+%float_2 = OpConstant %float 2
+%1 = OpConstantComposite %vec2 %float_2 %float_1
+%2 = OpTypeFunction %float
+%3 = OpFunction %float None %2
+%4 = OpLabel
+%var = OpVariable %ptr_vec2 Function %1
+%5 = OpLoad %vec2 %var
+%6 = OpVectorShuffle %float %5 %5 0
+     OpReturnValue %6
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      HasSubstr("Result Type of OpVectorShuffle must be OpTypeVector."));
+}
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleComponentCount) {
+  string spirv = kGLSL450MemoryModel + R"(
+%int = OpTypeInt 32 0
+%ivec3 = OpTypeVector %int 3
+%ptr_ivec3 = OpTypePointer Function %ivec3
+%int_42 = OpConstant %int 42
+%int_0 = OpConstant %int 0
+%int_2 = OpConstant %int 2
+%1 = OpConstantComposite %ivec3 %int_42 %int_0 %int_2
+%2 = OpTypeFunction %ivec3
+%3 = OpFunction %ivec3 None %2
+%4 = OpLabel
+%var = OpVariable %ptr_ivec3 Function %1
+%5 = OpLoad %ivec3 %var
+%6 = OpVectorShuffle %ivec3 %5 %5 0 1
+     OpReturnValue %6
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      HasSubstr("OpVectorShuffle component literals count does not match "
+                "Result Type <id> '2's vector component count."));
+}
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleVector1Type) {
+  string spirv = kGLSL450MemoryModel + R"(
+%int = OpTypeInt 32 0
+%ivec2 = OpTypeVector %int 2
+%ptr_int = OpTypePointer Function %int
+%undef = OpUndef %ivec2
+%int_42 = OpConstant %int 42
+%2 = OpTypeFunction %ivec2
+%3 = OpFunction %ivec2 None %2
+%4 = OpLabel
+%var = OpVariable %ptr_int Function %int_42
+%5 = OpLoad %int %var
+%6 = OpVectorShuffle %ivec2 %5 %undef 0 0
+     OpReturnValue %6
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("The type of Vector 1 must be OpTypeVector."));
+}
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleVector2Type) {
+  string spirv = kGLSL450MemoryModel + R"(
+%int = OpTypeInt 32 0
+%ivec2 = OpTypeVector %int 2
+%ptr_ivec2 = OpTypePointer Function %ivec2
+%undef = OpUndef %int
+%int_42 = OpConstant %int 42
+%1 = OpConstantComposite %ivec2 %int_42 %int_42
+%2 = OpTypeFunction %ivec2
+%3 = OpFunction %ivec2 None %2
+%4 = OpLabel
+%var = OpVariable %ptr_ivec2 Function %1
+%5 = OpLoad %ivec2 %var
+%6 = OpVectorShuffle %ivec2 %5 %undef 0 1
+     OpReturnValue %6
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("The type of Vector 2 must be OpTypeVector."));
+}
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleVector1ComponentType) {
+  string spirv = kGLSL450MemoryModel + R"(
+%int = OpTypeInt 32 0
+%ivec3 = OpTypeVector %int 3
+%ptr_ivec3 = OpTypePointer Function %ivec3
+%int_42 = OpConstant %int 42
+%int_0 = OpConstant %int 0
+%int_2 = OpConstant %int 2
+%float = OpTypeFloat 32
+%vec3 = OpTypeVector %float 3
+%vec4 = OpTypeVector %float 4
+%ptr_vec3 = OpTypePointer Function %vec3
+%float_1 = OpConstant %float 1
+%float_2 = OpConstant %float 2
+%1 = OpConstantComposite %ivec3 %int_42 %int_0 %int_2
+%2 = OpConstantComposite %vec3 %float_1 %float_2 %float_2
+%3 = OpTypeFunction %vec4
+%4 = OpFunction %vec4 None %3
+%5 = OpLabel
+%var = OpVariable %ptr_ivec3 Function %1
+%var2 = OpVariable %ptr_vec3 Function %2
+%6 = OpLoad %ivec3 %var
+%7 = OpLoad %vec3 %var2
+%8 = OpVectorShuffle %vec4 %6 %7 4 3 1 0
+     OpReturnValue %8
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      HasSubstr("The Component Type of Vector 1 must be the same as "
+                "ResultType."));
+}
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleVector2ComponentType) {
+  string spirv = kGLSL450MemoryModel + R"(
+%int = OpTypeInt 32 0
+%ivec3 = OpTypeVector %int 3
+%ptr_ivec3 = OpTypePointer Function %ivec3
+%int_42 = OpConstant %int 42
+%int_0 = OpConstant %int 0
+%int_2 = OpConstant %int 2
+%float = OpTypeFloat 32
+%vec3 = OpTypeVector %float 3
+%vec4 = OpTypeVector %float 4
+%ptr_vec3 = OpTypePointer Function %vec3
+%float_1 = OpConstant %float 1
+%float_2 = OpConstant %float 2
+%1 = OpConstantComposite %ivec3 %int_42 %int_0 %int_2
+%2 = OpConstantComposite %vec3 %float_1 %float_2 %float_2
+%3 = OpTypeFunction %vec4
+%4 = OpFunction %vec4 None %3
+%5 = OpLabel
+%var = OpVariable %ptr_ivec3 Function %1
+%var2 = OpVariable %ptr_vec3 Function %2
+%6 = OpLoad %vec3 %var2
+%7 = OpLoad %ivec3 %var
+%8 = OpVectorShuffle %vec4 %6 %7 4 3 1 0
+     OpReturnValue %8
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      HasSubstr("The Component Type of Vector 2 must be the same as "
+                "ResultType."));
+}
+
+TEST_F(ValidateIdWithMessage, OpVectorShuffleLiterals) {
+  string spirv = kGLSL450MemoryModel + R"(
+%float = OpTypeFloat 32
+%vec2 = OpTypeVector %float 2
+%vec3 = OpTypeVector %float 3
+%vec4 = OpTypeVector %float 4
+%ptr_vec2 = OpTypePointer Function %vec2
+%ptr_vec3 = OpTypePointer Function %vec3
+%float_1 = OpConstant %float 1
+%float_2 = OpConstant %float 2
+%1 = OpConstantComposite %vec2 %float_2 %float_1
+%2 = OpConstantComposite %vec3 %float_1 %float_2 %float_2
+%3 = OpTypeFunction %vec4
+%4 = OpFunction %vec4 None %3
+%5 = OpLabel
+%var = OpVariable %ptr_vec2 Function %1
+%var2 = OpVariable %ptr_vec3 Function %2
+%6 = OpLoad %vec2 %var
+%7 = OpLoad %vec3 %var2
+%8 = OpVectorShuffle %vec4 %6 %7 0 5 2 6
+     OpReturnValue %8
+     OpFunctionEnd)";
+  CompileSuccessfully(spirv.c_str());
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("Component literal value 5 is greater than 4."));
+}
+
 // TODO: OpCompositeConstruct
 // TODO: OpCompositeExtract
 // TODO: OpCompositeInsert
@@ -3820,7 +4095,9 @@ TEST_F(ValidateIdWithMessage, OpReturnValueVarPtrGood) {
 
 // Without the VariablePointer Capability, the return value of a function is
 // *not* allowed to be a pointer.
-TEST_F(ValidateIdWithMessage, OpReturnValueVarPtrBad) {
+// Disabled since using OpSelect with pointers without VariablePointers will
+// fail LogicalsPass.
+TEST_F(ValidateIdWithMessage, DISABLED_OpReturnValueVarPtrBad) {
   std::ostringstream spirv;
   createVariablePointerSpirvProgram(&spirv,
                                     ""    /* Instructions to add to "main" */,
@@ -4077,7 +4354,7 @@ OpDecorate %1 SpecId 200
 %1 = OpConstant %int 3
 %main = OpFunction %1 None %2
 %4 = OpLabel
-OpReturn
+OpReturnValue %1
 OpFunctionEnd
   )";
   CompileSuccessfully(spirv.c_str());
@@ -4099,7 +4376,7 @@ OpDecorate %1 SpecId 200
 %1 = OpSpecConstantOp %int IAdd %3 %4
 %main = OpFunction %1 None %2
 %6 = OpLabel
-OpReturn
+OpReturnValue %3
 OpFunctionEnd
   )";
   CompileSuccessfully(spirv.c_str());
@@ -4116,10 +4393,11 @@ OpDecorate %1 SpecId 200
 %void = OpTypeVoid
 %2 = OpTypeFunction %void
 %int = OpTypeInt 32 0
+%3 = OpConstant %int 1
 %1 = OpSpecConstantComposite %int
 %main = OpFunction %1 None %2
 %4 = OpLabel
-OpReturn
+OpReturnValue %3
 OpFunctionEnd
   )";
   CompileSuccessfully(spirv.c_str());

@@ -43,7 +43,7 @@ class DeadBranchElimPass : public MemPass {
      std::function<std::vector<ir::BasicBlock*>*(const ir::BasicBlock*)>;
 
   DeadBranchElimPass();
-  const char* name() const override { return "dead-branch-elim"; }
+  const char* name() const override { return "eliminate-dead-branches"; }
   Status Process(ir::Module*) override;
 
  private:
@@ -69,9 +69,13 @@ class DeadBranchElimPass : public MemPass {
   void ComputeStructuredOrder(
     ir::Function* func, std::list<ir::BasicBlock*>* order);
 
-  // If |condId| is boolean constant, return value in |condVal| and
-  // |condIsConst| as true, otherwise return |condIsConst| as false.
-  void GetConstCondition(uint32_t condId, bool* condVal, bool* condIsConst);
+  // If |condId| is boolean constant, return conditional value in |condVal| and
+  // return true, otherwise return false.
+  bool GetConstCondition(uint32_t condId, bool* condVal);
+
+  // If |valId| is a 32-bit integer constant, return value via |value| and
+  // return true, otherwise return false.
+  bool GetConstInteger(uint32_t valId, uint32_t* value);
 
   // Add branch to |labelId| to end of block |bp|.
   void AddBranch(uint32_t labelId, ir::BasicBlock* bp);
@@ -87,15 +91,17 @@ class DeadBranchElimPass : public MemPass {
   // Kill all instructions in block |bp|.
   void KillAllInsts(ir::BasicBlock* bp);
 
-  // If block |bp| contains constant conditional branch preceeded by an
+  // If block |bp| contains conditional branch or switch preceeded by an
   // OpSelctionMerge, return true and return branch and merge instructions
-  // in |branchInst| and |mergeInst| and the boolean constant in |condVal|. 
-  bool GetConstConditionalSelectionBranch(ir::BasicBlock* bp,
-    ir::Instruction** branchInst, ir::Instruction** mergeInst,
-    uint32_t *condId, bool *condVal);
+  // in |branchInst| and |mergeInst| and the conditional id in |condId|. 
+  bool GetSelectionBranch(ir::BasicBlock* bp, ir::Instruction** branchInst,
+    ir::Instruction** mergeInst, uint32_t *condId);
 
-  // Return true if |labelId| has any non-phi references
-  bool HasNonPhiRef(uint32_t labelId);
+  // Return true if |labelId| has any non-phi, non-backedge references
+  bool HasNonPhiNonBackedgeRef(uint32_t labelId);
+
+  // Compute backedges for blocks in |structuredOrder|.
+  void ComputeBackEdges(std::list<ir::BasicBlock*>& structuredOrder);
 
   // For function |func|, look for BranchConditionals with constant condition
   // and convert to a Branch to the indicated label. Delete resulting dead
@@ -122,6 +128,9 @@ class DeadBranchElimPass : public MemPass {
   std::unordered_map<const ir::BasicBlock*, std::vector<ir::BasicBlock*>>
       block2structured_succs_;
   
+  // All backedge branches in current function
+  std::unordered_set<ir::Instruction*> backedges_;
+
   // Extensions supported by this pass.
   std::unordered_set<std::string> extensions_whitelist_;
 };

@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "operand.h"
+#include "util/ilist_node.h"
 
 #include "spirv-tools/libspirv.h"
 #include "spirv/1.2/spirv.h"
@@ -30,13 +31,14 @@ namespace ir {
 
 class Function;
 class Module;
+class InstructionList;
 
 // About operand:
 //
 // In the SPIR-V specification, the term "operand" is used to mean any single
 // SPIR-V word following the leading wordcount-opcode word. Here, the term
 // "operand" is used to mean a *logical* operand. A logical operand may consist
-// of mulitple SPIR-V words, which together make up the same component. For
+// of multiple SPIR-V words, which together make up the same component. For
 // example, a logical operand of a 64-bit integer needs two words to express.
 //
 // Further, we categorize logical operands into *in* and *out* operands.
@@ -58,8 +60,16 @@ struct Operand {
   spv_operand_type_t type;      // Type of this logical operand.
   std::vector<uint32_t> words;  // Binary segments of this logical operand.
 
+  friend bool operator==(const Operand& o1, const Operand& o2) {
+    return o1.type == o2.type && o1.words == o2.words;
+  }
+
   // TODO(antiagainst): create fields for literal number kind, width, etc.
 };
+
+inline bool operator!=(const Operand& o1, const Operand& o2) {
+  return !(o1 == o2);
+}
 
 // A SPIR-V instruction. It contains the opcode and any additional logical
 // operand, including the result id (if any) and result type id (if any). It
@@ -67,16 +77,24 @@ struct Operand {
 // appearing before this instruction. Note that the result id of an instruction
 // should never change after the instruction being built. If the result id
 // needs to change, the user should create a new instruction instead.
-class Instruction {
+class Instruction : public utils::IntrusiveNodeBase<Instruction> {
  public:
   using iterator = std::vector<Operand>::iterator;
   using const_iterator = std::vector<Operand>::const_iterator;
 
   // Creates a default OpNop instruction.
-  Instruction() : opcode_(SpvOpNop), type_id_(0), result_id_(0) {}
+  Instruction()
+      : utils::IntrusiveNodeBase<Instruction>(),
+        opcode_(SpvOpNop),
+        type_id_(0),
+        result_id_(0) {}
   // Creates an instruction with the given opcode |op| and no additional logical
   // operands.
-  Instruction(SpvOp op) : opcode_(op), type_id_(0), result_id_(0) {}
+  Instruction(SpvOp op)
+      : utils::IntrusiveNodeBase<Instruction>(),
+        opcode_(op),
+        type_id_(0),
+        result_id_(0) {}
   // Creates an instruction using the given spv_parsed_instruction_t |inst|. All
   // the data inside |inst| will be copied and owned in this instance. And keep
   // record of line-related debug instructions |dbg_line| ahead of this
@@ -89,11 +107,22 @@ class Instruction {
   Instruction(SpvOp op, uint32_t ty_id, uint32_t res_id,
               const std::vector<Operand>& in_operands);
 
+  // TODO: I will want to remove these, but will first have to remove the use of
+  // std::vector<Instruction>.
   Instruction(const Instruction&) = default;
   Instruction& operator=(const Instruction&) = default;
 
   Instruction(Instruction&&);
   Instruction& operator=(Instruction&&);
+
+  virtual ~Instruction() = default;
+
+  // Returns a newly allocated instruction that has the same operands, result,
+  // and type as |this|.  The new instruction is not linked into any list.
+  // It is the responsibility of the caller to make sure that the storage is
+  // removed. It is the caller's responsibility to make sure that there is only
+  // one instruction for each result id.
+  Instruction* Clone() const;
 
   SpvOp opcode() const { return opcode_; }
   // Sets the opcode of this instruction to a specific opcode. Note this may
@@ -109,6 +138,11 @@ class Instruction {
   const std::vector<Instruction>& dbg_line_insts() const {
     return dbg_line_insts_;
   }
+
+  // Same semantics as in the base class except the list the InstructionList
+  // containing |pos| will now assume ownership of |this|.
+  // inline void MoveBefore(Instruction* pos);
+  // inline void InsertAfter(Instruction* pos);
 
   // Begin and end iterators for operands.
   iterator begin() { return operands_.begin(); }
@@ -139,6 +173,10 @@ class Instruction {
   inline void SetResultType(uint32_t ty_id);
   // Sets the result id
   inline void SetResultId(uint32_t res_id);
+  // Remove the |index|-th operand
+  void RemoveOperand(uint32_t index) {
+    operands_.erase(operands_.begin() + index);
+  }
 
   // The following methods are similar to the above, but are for in operands.
   uint32_t NumInOperands() const {
@@ -150,6 +188,9 @@ class Instruction {
   }
   uint32_t GetSingleWordInOperand(uint32_t index) const {
     return GetSingleWordOperand(index + TypeResultIdCount());
+  }
+  void RemoveInOperand(uint32_t index) {
+    operands_.erase(operands_.begin() + index + TypeResultIdCount());
   }
 
   // Returns true if this instruction is OpNop.
@@ -166,9 +207,20 @@ class Instruction {
   inline void ForEachInst(const std::function<void(const Instruction*)>& f,
                           bool run_on_debug_line_insts = false) const;
 
+  // Runs the given function |f| on all operand ids.
+  //
+  // |f| should not transform an ID into 0, as 0 is an invalid ID.
+  inline void ForEachId(const std::function<void(uint32_t*)>& f);
+  inline void ForEachId(const std::function<void(const uint32_t*)>& f) const;
+
   // Runs the given function |f| on all "in" operand ids
   inline void ForEachInId(const std::function<void(uint32_t*)>& f);
   inline void ForEachInId(const std::function<void(const uint32_t*)>& f) const;
+
+  // Runs the given function |f| on all "in" operands
+  inline void ForEachInOperand(const std::function<void(uint32_t*)>& f);
+  inline void ForEachInOperand(const std::function<void(const uint32_t*)>& f)
+      const;
 
   // Returns true if any operands can be labels
   inline bool HasLabels() const;
@@ -176,8 +228,13 @@ class Instruction {
   // Pushes the binary segments for this instruction into the back of *|binary|.
   void ToBinaryWithoutAttachedDebugInsts(std::vector<uint32_t>* binary) const;
 
+  // Replaces the operands to the instruction with |new_operands|. The caller
+  // is responsible for building a complete and valid list of operands for
+  // this instruction.
+  void ReplaceOperands(const std::vector<Operand>& new_operands);
+
  private:
-  // Returns the toal count of result type id and result id.
+  // Returns the total count of result type id and result id.
   uint32_t TypeResultIdCount() const {
     return (type_id_ != 0) + (result_id_ != 0);
   }
@@ -191,6 +248,8 @@ class Instruction {
   // Instructions representing OpLine or OpNonLine itself, this field should be
   // empty.
   std::vector<Instruction> dbg_line_insts_;
+
+  friend InstructionList;
 };
 
 inline const Operand& Instruction::GetOperand(uint32_t index) const {
@@ -246,6 +305,20 @@ inline void Instruction::ForEachInst(
   f(this);
 }
 
+inline void Instruction::ForEachId(const std::function<void(uint32_t*)>& f) {
+  for (auto& opnd : operands_)
+    if (spvIsIdType(opnd.type)) f(&opnd.words[0]);
+  if (type_id_ != 0u)
+    type_id_ = GetSingleWordOperand(0u);
+  if (result_id_ != 0u) result_id_ = GetSingleWordOperand(type_id_ == 0u ? 0u : 1u);
+}
+
+inline void Instruction::ForEachId(
+    const std::function<void(const uint32_t*)>& f) const {
+  for (const auto& opnd : operands_)
+    if (spvIsIdType(opnd.type)) f(&opnd.words[0]);
+}
+
 inline void Instruction::ForEachInId(const std::function<void(uint32_t*)>& f) {
   for (auto& opnd : operands_) {
     switch (opnd.type) {
@@ -268,6 +341,34 @@ inline void Instruction::ForEachInId(
         break;
       default:
         if (spvIsIdType(opnd.type)) f(&opnd.words[0]);
+        break;
+    }
+  }
+}
+
+inline void Instruction::ForEachInOperand(
+      const std::function<void(uint32_t*)>& f) {
+  for (auto& opnd : operands_) {
+    switch (opnd.type) {
+      case SPV_OPERAND_TYPE_RESULT_ID:
+      case SPV_OPERAND_TYPE_TYPE_ID:
+        break;
+      default:
+        f(&opnd.words[0]);
+        break;
+    }
+  }
+}
+
+inline void Instruction::ForEachInOperand(
+    const std::function<void(const uint32_t*)>& f) const {
+  for (const auto& opnd : operands_) {
+    switch (opnd.type) {
+      case SPV_OPERAND_TYPE_RESULT_ID:
+      case SPV_OPERAND_TYPE_TYPE_ID:
+        break;
+      default:
+        f(&opnd.words[0]);
         break;
     }
   }

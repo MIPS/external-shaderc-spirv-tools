@@ -109,11 +109,27 @@ Currently supported optimizations:
   * Eliminate dead branches
   * Merge single successor / single predecessor block pairs
   * Eliminate common uniform loads
+  * Remove duplicates: Capabilities, extended instruction imports, types, and
+    decorations.
 
 For the latest list with detailed documentation, please refer to
 [`include/spirv-tools/optimizer.hpp`](include/spirv-tools/optimizer.hpp).
 
 For suggestions on using the code reduction options, please refer to this [white paper](https://www.lunarg.com/shader-compiler-technologies/white-paper-spirv-opt/).
+
+
+### Linker
+
+*Note:* The linker is still under development.
+
+Current features:
+* Combine multiple SPIR-V binary modules together.
+* Combine into a library (exports are retained) or an executable (no symbols
+  are exported).
+
+See the [CHANGES](CHANGES) file for reports on completed work, and the [General
+sub-project](https://github.com/KhronosGroup/SPIRV-Tools/projects/2) for
+planned and in-progress work.
 
 ### Extras
 
@@ -197,6 +213,8 @@ The following CMake options are supported:
   the command line tools.  This will prevent the tests from being built.
 * `SPIRV_SKIP_EXECUTABLES={ON|OFF}`, default `OFF`- Build only the library, not
   the command line tools and tests.
+* `SPIRV_BUILD_COMPRESSION={ON|OFF}`, default `OFF`- Build SPIR-V compressing
+  codec.
 * `SPIRV_USE_SANITIZER=<sanitizer>`, default is no sanitizing - On UNIX
   platforms with an appropriate version of `clang` this option enables the use
   of the sanitizers documented [here][clang-sanitizers].
@@ -253,10 +271,11 @@ There are five main entry points into the library in the C interface:
 * `spvValidate` implements the validator functionality. *Incomplete*
 * `spvValidateBinary` implements the validator functionality. *Incomplete*
 
-The C++ interface is comprised of two classes, `SpirvTools` and `Optimizer`,
-both in the `spvtools` namespace.
+The C++ interface is comprised of three classes, `SpirvTools`, `Optimizer` and
+`Linker`, all in the `spvtools` namespace.
 * `SpirvTools` provides `Assemble`, `Disassemble`, and `Validate` methods.
 * `Optimizer` provides methods for registering and running optimization passes.
+* `Linker` provides methods for combining together multiple binaries.
 
 ## Command line tools
 
@@ -292,6 +311,18 @@ Use option `-h` to print help.
 
 The output includes syntax colouring when printing to the standard output stream,
 on Linux, Windows, and OS X.
+
+### Linker tool
+
+The linker combines multiple SPIR-V binary modules together, resulting in a single
+binary module as output.
+
+This is a work in progress.
+The linker does not support OpenCL program linking options related to math
+flags. (See section 5.6.5.2 in OpenCL 1.2)
+
+* `spirv-link` - the standalone linker
+  * `<spirv-dir>/tools/link`
 
 ### Optimizer tool
 
@@ -392,6 +423,14 @@ for more information._
 ### Validator
 
 This is a work in progress.
+
+### Linker
+
+* The linker could accept math transformations such as allowing MADs, or other
+  math flags passed at linking-time in OpenCL.
+* Linkage attributes can not be applied through a group.
+* Check decorations of linked functions attributes.
+* Remove dead instructions, such as OpName targeting imported symbols.
 
 ## Licence
 <a name="license"></a>

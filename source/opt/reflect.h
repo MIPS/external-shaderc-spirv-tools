@@ -24,9 +24,15 @@ namespace ir {
 // following functions tend to be outdated and should be updated when SPIR-V
 // version bumps.
 
-inline bool IsDebugInst(SpvOp opcode) {
-  return (opcode >= SpvOpSourceContinued && opcode <= SpvOpLine) ||
-         opcode == SpvOpNoLine || opcode == SpvOpModuleProcessed;
+inline bool IsDebug1Inst(SpvOp opcode) {
+  return (opcode >= SpvOpSourceContinued && opcode <= SpvOpSourceExtension) ||
+         opcode == SpvOpString;
+}
+inline bool IsDebug2Inst(SpvOp opcode) {
+  return opcode == SpvOpName || opcode == SpvOpMemberName;
+}
+inline bool IsDebug3Inst(SpvOp opcode) {
+  return opcode == SpvOpModuleProcessed;
 }
 inline bool IsDebugLineInst(SpvOp opcode) {
   return opcode == SpvOpLine || opcode == SpvOpNoLine;

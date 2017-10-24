@@ -16,14 +16,18 @@ add_library(SPIRV-Tools-opt
   basic_block.h
   block_merge_pass.h
   build_module.h
+  cfg_cleanup_pass.h
   common_uniform_elim_pass.h
   compact_ids_pass.h
   constants.h
   dead_branch_elim_pass.h
+  dead_variable_elimination.h
+  decoration_manager.h
   def_use_manager.h
   eliminate_dead_constant_pass.h
   flatten_decoration_pass.h
   function.h
+  fold.h
   fold_spec_constant_op_and_composite_pass.h
   freeze_spec_constant_value_pass.h
   inline_pass.h
@@ -44,7 +48,10 @@ add_library(SPIRV-Tools-opt
   pass.h
   passes.h
   pass_manager.h
+  eliminate_dead_functions_pass.h
+  remove_duplicates_pass.h
   set_spec_constant_default_value_pass.h
+  strength_reduction_pass.h
   strip_debug_info_pass.h
   types.h
   type_manager.h
@@ -54,15 +61,19 @@ add_library(SPIRV-Tools-opt
   basic_block.cpp
   block_merge_pass.cpp
   build_module.cpp
+  cfg_cleanup_pass.cpp
   common_uniform_elim_pass.cpp
   compact_ids_pass.cpp
+  decoration_manager.cpp
   def_use_manager.cpp
   dead_branch_elim_pass.cpp
+  dead_variable_elimination.cpp
   eliminate_dead_constant_pass.cpp
   flatten_decoration_pass.cpp
-  function.cpp
+  fold.cpp
   fold_spec_constant_op_and_composite_pass.cpp
   freeze_spec_constant_value_pass.cpp
+  function.cpp
   inline_pass.cpp
   inline_exhaustive_pass.cpp
   inline_opaque_pass.cpp
@@ -74,16 +85,19 @@ add_library(SPIRV-Tools-opt
   local_single_store_elim_pass.cpp
   local_ssa_elim_pass.cpp
   module.cpp
+  eliminate_dead_functions_pass.cpp
+  remove_duplicates_pass.cpp
   set_spec_constant_default_value_pass.cpp
   optimizer.cpp
   mem_pass.cpp
   pass.cpp
   pass_manager.cpp
+  strength_reduction_pass.cpp
   strip_debug_info_pass.cpp
   types.cpp
   type_manager.cpp
   unify_const_pass.cpp
-)
+  instruction_list.cpp)
 
 spvtools_default_compile_options(SPIRV-Tools-opt)
 target_include_directories(SPIRV-Tools-opt

@@ -17,6 +17,11 @@ add_spvtools_unittest(TARGET instruction
   LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET instruction_list
+        SRCS instruction_list_test.cpp
+        LIBS SPIRV-Tools-opt
+        )
+
 add_spvtools_unittest(TARGET ir_loader
   SRCS ir_loader_test.cpp
   LIBS SPIRV-Tools-opt
@@ -98,6 +103,11 @@ add_spvtools_unittest(TARGET pass_dead_branch_elim
   LIBS SPIRV-Tools-opt
 )
 
+add_spvtools_unittest(TARGET pass_dead_variable_elim
+        SRCS dead_variable_elim_test.cpp pass_utils.cpp
+        LIBS SPIRV-Tools-opt
+        )
+
 add_spvtools_unittest(TARGET pass_aggressive_dce
   SRCS aggressive_dead_code_elim_test.cpp pass_utils.cpp
   LIBS SPIRV-Tools-opt
@@ -110,6 +120,16 @@ add_spvtools_unittest(TARGET pass_common_uniform_elim
 
 add_spvtools_unittest(TARGET pass_eliminate_dead_const
   SRCS eliminate_dead_const_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_eliminate_dead_functions
+  SRCS eliminate_dead_functions_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_pass
+  SRCS pass_test.cpp pass_utils.cpp
   LIBS SPIRV-Tools-opt
 )
 
@@ -166,5 +186,15 @@ add_spvtools_unittest(TARGET pass_set_spec_const_default_value
 
 add_spvtools_unittest(TARGET line_debug_info
   SRCS line_debug_info_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET pass_strength_reduction
+  SRCS strength_reduction_test.cpp pass_utils.cpp
+  LIBS SPIRV-Tools-opt
+)
+
+add_spvtools_unittest(TARGET cfg_cleanup
+  SRCS cfg_cleanup_test.cpp pass_utils.cpp
   LIBS SPIRV-Tools-opt
 )

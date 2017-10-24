@@ -150,7 +150,7 @@ bool MemPass::IsTargetVar(uint32_t varId) {
 
 void MemPass::FindNamedOrDecoratedIds() {
   named_or_decorated_ids_.clear();
-  for (auto& di : module_->debugs())
+  for (auto& di : module_->debugs2())
     if (di.opcode() == SpvOpName)
       named_or_decorated_ids_.insert(di.GetSingleWordInOperand(0));
   for (auto& ai : module_->annotations())
@@ -292,7 +292,7 @@ void MemPass::ReplaceAndDeleteLoad(
   DCEInst(loadInst);
 }
 
-MemPass::MemPass() : module_(nullptr), def_use_mgr_(nullptr) {}
+MemPass::MemPass() : module_(nullptr), def_use_mgr_(nullptr), next_id_(0) {}
 
 }  // namespace opt
 }  // namespace spvtools

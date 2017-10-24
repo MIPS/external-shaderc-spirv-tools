@@ -190,6 +190,7 @@ set_property(TARGET spirv-tools-build-version PROPERTY FOLDER "SPIRV-Tools build
 
 add_subdirectory(comp)
 add_subdirectory(opt)
+add_subdirectory(link)
 
 set(SPIRV_SOURCES
   ${spirv-tools_SOURCE_DIR}/include/spirv-tools/libspirv.h
@@ -252,13 +253,17 @@ set(SPIRV_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/text.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/text_handler.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/validate_cfg.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_arithmetics.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_bitwise.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_capability.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/validate_id.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/validate_instruction.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_cfg.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_conversion.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_datarules.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_decorations.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_id.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_instruction.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_layout.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/validate_logicals.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/validate_type_unique.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/val/decoration.h
   ${CMAKE_CURRENT_SOURCE_DIR}/val/basic_block.cpp

@@ -46,6 +46,7 @@ enum ModuleLayoutSection {
   kLayoutExecutionMode,         /// < Section 2.4 #6
   kLayoutDebug1,                /// < Section 2.4 #7 > 1
   kLayoutDebug2,                /// < Section 2.4 #7 > 2
+  kLayoutDebug3,                /// < Section 2.4 #7 > 3
   kLayoutAnnotations,           /// < Section 2.4 #8
   kLayoutTypes,                 /// < Section 2.4 #9
   kLayoutFunctionDeclarations,  /// < Section 2.4 #10
@@ -137,6 +138,7 @@ class ValidationState_t {
 
   /// Returns the function states
   Function& current_function();
+  const Function& current_function() const;
 
   /// Returns true if the called after a function instruction but before the
   /// function end instruction
@@ -329,6 +331,67 @@ class ValidationState_t {
   /// Adds the instruction data to unique_type_declarations_.
   /// Returns false if an identical type declaration already exists.
   bool RegisterUniqueTypeDeclaration(const spv_parsed_instruction_t& inst);
+
+  // Returns type_id of the scalar component of |id|.
+  // |id| can be either
+  // - scalar, vector or matrix type
+  // - object of either scalar, vector or matrix type
+  uint32_t GetComponentType(uint32_t id) const;
+
+  // Returns
+  // - 1 for scalar types or objects
+  // - vector size for vector types or objects
+  // - num columns for matrix types or objects
+  // Should not be called with any other arguments (will return zero and invoke
+  // assertion).
+  uint32_t GetDimension(uint32_t id) const;
+
+  // Returns bit width of scalar or component.
+  // |id| can be
+  // - scalar, vector or matrix type
+  // - object of either scalar, vector or matrix type
+  // Will invoke assertion and return 0 if |id| is none of the above.
+  uint32_t GetBitWidth(uint32_t id) const;
+
+  // Provides detailed information on matrix type.
+  // Returns false iff |id| is not matrix type.
+  bool GetMatrixTypeInfo(
+      uint32_t id, uint32_t* num_rows, uint32_t* num_cols,
+      uint32_t* column_type, uint32_t* component_type) const;
+
+  // Collects struct member types into |member_types|.
+  // Returns false iff not struct type or has no members.
+  // Deletes prior contents of |member_types|.
+  bool GetStructMemberTypes(
+      uint32_t struct_type_id, std::vector<uint32_t>* member_types) const;
+
+  // Returns true iff |id| is a type corresponding to the name of the function.
+  // Only works for types not for objects.
+  bool IsFloatScalarType(uint32_t id) const;
+  bool IsFloatVectorType(uint32_t id) const;
+  bool IsFloatMatrixType(uint32_t id) const;
+  bool IsIntScalarType(uint32_t id) const;
+  bool IsIntVectorType(uint32_t id) const;
+  bool IsUnsignedIntScalarType(uint32_t id) const;
+  bool IsUnsignedIntVectorType(uint32_t id) const;
+  bool IsSignedIntScalarType(uint32_t id) const;
+  bool IsSignedIntVectorType(uint32_t id) const;
+  bool IsBoolScalarType(uint32_t id) const;
+  bool IsBoolVectorType(uint32_t id) const;
+  bool IsPointerType(uint32_t id) const;
+
+  // Returns type_id if id has type or zero otherwise.
+  uint32_t GetTypeId(uint32_t id) const;
+
+  // Returns type_id for given id operand if it has a type or zero otherwise.
+  // |operand_index| is expected to be pointing towards an operand which is an
+  // id.
+  uint32_t GetOperandTypeId(const spv_parsed_instruction_t* inst,
+                            size_t operand_index) const;
+
+  // Provides information on pointer type. Returns false iff not pointer type.
+  bool GetPointerTypeInfo(
+      uint32_t id, uint32_t* data_type, uint32_t* storage_class) const;
 
  private:
   ValidationState_t(const ValidationState_t&);

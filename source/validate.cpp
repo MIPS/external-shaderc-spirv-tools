@@ -180,6 +180,10 @@ spv_result_t ProcessInstruction(void* user_data,
   if (auto error = CfgPass(_, inst)) return error;
   if (auto error = InstructionPass(_, inst)) return error;
   if (auto error = TypeUniquePass(_, inst)) return error;
+  if (auto error = ArithmeticsPass(_, inst)) return error;
+  if (auto error = ConversionPass(_, inst)) return error;
+  if (auto error = LogicalsPass(_, inst)) return error;
+  if (auto error = BitwisePass(_, inst)) return error;
 
   return SPV_SUCCESS;
 }

@@ -56,6 +56,11 @@ class Pass {
   virtual ~Pass() = default;
 
   // Returns a descriptive name for this pass.
+  //
+  // NOTE: When deriving a new pass class, make sure you make the name
+  // compatible with the corresponding spirv-opt command-line flag. For example,
+  // if you add the flag --my-pass to spirv-opt, make this function return
+  // "my-pass" (no leading hyphens).
   virtual const char* name() const = 0;
 
   // Sets the message consumer to the given |consumer|. |consumer| which will be
@@ -67,8 +72,24 @@ class Pass {
   // Add to |todo| all ids of functions called in |func|.
   void AddCalls(ir::Function* func, std::queue<uint32_t>* todo);
 
-  // 
+  // Applies |pfn| to every function in the call trees that are rooted at the
+  // entry points.  Returns true if any call |pfn| returns true.  By convention
+  // |pfn| should return true if it modified the module.
   bool ProcessEntryPointCallTree(ProcessFunction& pfn, ir::Module* module);
+
+  // Applies |pfn| to every function in the call trees rooted at the entry
+  // points and exported functions.  Returns true if any call |pfn| returns
+  // true.  By convention |pfn| should return true if it modified the module.
+  bool ProcessReachableCallTree(ProcessFunction& pfn, ir::Module* module);
+
+  // Applies |pfn| to every function in the call trees rooted at the elements of
+  // |roots|.  Returns true if any call to |pfn| returns true.  By convention
+  // |pfn| should return true if it modified the module.  After returning
+  // |roots| will be empty.
+  bool ProcessCallTreeFromRoots(
+      ProcessFunction& pfn,
+      const std::unordered_map<uint32_t, ir::Function*>& id2function,
+      std::queue<uint32_t>* roots);
 
   // Processes the given |module|. Returns Status::Failure if errors occur when
   // processing. Returns the corresponding Status::Success if processing is

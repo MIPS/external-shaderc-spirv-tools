@@ -116,11 +116,12 @@ class LocalMultiStoreElimPass : public MemPass {
   // undef to function undef map.
   uint32_t Type2Undef(uint32_t type_id);
 
-  // Patch phis in loop header block now that the map is complete for the
-  // backedge predecessor. Specifically, for each phi, find the value
-  // corresponding to the backedge predecessor. That contains the variable id
-  // that this phi corresponds to. Change this phi operand to the the value
-  // which corresponds to that variable in the predecessor map.
+  // Patch phis in loop header block |header_id| now that the map is complete
+  // for the backedge predecessor |back_id|. Specifically, for each phi, find
+  // the value corresponding to the backedge predecessor. That was temporarily
+  // set with the variable id that this phi corresponds to. Change this phi
+  // operand to the the value which corresponds to that variable in the
+  // predecessor map.
   void PatchPhis(uint32_t header_id, uint32_t back_id);
 
   // Initialize extensions whitelist
@@ -135,16 +136,6 @@ class LocalMultiStoreElimPass : public MemPass {
   // SingleBlockLocalElim and SingleStoreLocalElim beforehand will improve
   // the runtime and effectiveness of this function.
   bool EliminateMultiStoreLocal(ir::Function* func);
-
-  // Save next available id into |module|.
-  inline void FinalizeNextId(ir::Module* module) {
-    module->SetIdBound(next_id_);
-  }
-
-  // Return next available id and calculate next.
-  inline uint32_t TakeNextId() {
-    return next_id_++;
-  }
 
   void Initialize(ir::Module* module);
   Pass::Status ProcessImpl();
@@ -175,15 +166,16 @@ class LocalMultiStoreElimPass : public MemPass {
   std::unordered_map<uint32_t, std::unordered_map<uint32_t, uint32_t>>
       label2ssa_map_;
 
+  // The Ids of OpPhi instructions that are in a loop header and which require
+  // patching of the value for the loop back-edge.
+  std::unordered_set<uint32_t> phis_to_patch_;
+
   // Extra block whose successors are all blocks with no predecessors
   // in function.
   ir::BasicBlock pseudo_entry_block_;
 
   // Extensions supported by this pass.
   std::unordered_set<std::string> extensions_whitelist_;
-
-  // Next unused ID
-  uint32_t next_id_;
 };
 
 }  // namespace opt

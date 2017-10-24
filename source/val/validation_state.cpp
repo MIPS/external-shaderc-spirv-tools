@@ -62,6 +62,10 @@ bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
         default: break;
       }
       break;
+    case kLayoutDebug3:
+      // Only OpModuleProcessed is allowed here.
+      out = (op == SpvOpModuleProcessed);
+      break;
     case kLayoutAnnotations:
       switch (op) {
         case SpvOpDecorate:
@@ -110,6 +114,7 @@ bool IsInstructionInLayoutSection(ModuleLayoutSection layout, SpvOp op) {
         case SpvOpString:
         case SpvOpName:
         case SpvOpMemberName:
+        case SpvOpModuleProcessed:
         case SpvOpDecorate:
         case SpvOpMemberDecorate:
         case SpvOpGroupDecorate:
@@ -252,6 +257,11 @@ DiagnosticStream ValidationState_t::diag(spv_result_t error_code) const {
 deque<Function>& ValidationState_t::functions() { return module_functions_; }
 
 Function& ValidationState_t::current_function() {
+  assert(in_function_body());
+  return module_functions_.back();
+}
+
+const Function& ValidationState_t::current_function() const {
   assert(in_function_body());
   return module_functions_.back();
 }
@@ -427,4 +437,252 @@ bool ValidationState_t::RegisterUniqueTypeDeclaration(
 
   return unique_type_declarations_.insert(std::move(key)).second;
 }
+
+uint32_t ValidationState_t::GetTypeId(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+  return inst->type_id();
+}
+
+uint32_t ValidationState_t::GetComponentType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+
+  switch (inst->opcode()) {
+    case SpvOpTypeFloat:
+    case SpvOpTypeInt:
+    case SpvOpTypeBool:
+      return id;
+
+    case SpvOpTypeVector:
+      return inst->word(2);
+
+    case SpvOpTypeMatrix:
+      return GetComponentType(inst->word(2));
+
+    default:
+      break;
+  }
+
+  if (inst->type_id())
+    return GetComponentType(inst->type_id());
+
+  assert(0);
+  return 0;
+}
+
+uint32_t ValidationState_t::GetDimension(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+
+  switch (inst->opcode()) {
+    case SpvOpTypeFloat:
+    case SpvOpTypeInt:
+    case SpvOpTypeBool:
+      return 1;
+
+    case SpvOpTypeVector:
+    case SpvOpTypeMatrix:
+      return inst->word(3);
+
+    default:
+      break;
+  }
+
+  if (inst->type_id())
+    return GetDimension(inst->type_id());
+
+  assert(0);
+  return 0;
+}
+
+uint32_t ValidationState_t::GetBitWidth(uint32_t id) const {
+  const uint32_t component_type_id = GetComponentType(id);
+  const Instruction* inst = FindDef(component_type_id);
+  assert(inst);
+
+  if (inst->opcode() == SpvOpTypeFloat || inst->opcode() == SpvOpTypeInt)
+    return inst->word(2);
+
+  if (inst->opcode() == SpvOpTypeBool)
+    return 1;
+
+  assert(0);
+  return 0;
+}
+
+bool ValidationState_t::IsFloatScalarType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+  return inst->opcode() == SpvOpTypeFloat;
+}
+
+bool ValidationState_t::IsFloatVectorType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+
+  if (inst->opcode() == SpvOpTypeVector) {
+    return IsFloatScalarType(GetComponentType(id));
+  }
+
+  return false;
+}
+
+bool ValidationState_t::IsIntScalarType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+  return inst->opcode() == SpvOpTypeInt;
+}
+
+bool ValidationState_t::IsIntVectorType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+
+  if (inst->opcode() == SpvOpTypeVector) {
+    return IsIntScalarType(GetComponentType(id));
+  }
+
+  return false;
+}
+
+bool ValidationState_t::IsUnsignedIntScalarType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+  return inst->opcode() == SpvOpTypeInt && inst->word(3) == 0;
+}
+
+bool ValidationState_t::IsUnsignedIntVectorType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+
+  if (inst->opcode() == SpvOpTypeVector) {
+    return IsUnsignedIntScalarType(GetComponentType(id));
+  }
+
+  return false;
+}
+
+bool ValidationState_t::IsSignedIntScalarType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+  return inst->opcode() == SpvOpTypeInt && inst->word(3) == 1;
+}
+
+bool ValidationState_t::IsSignedIntVectorType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+
+  if (inst->opcode() == SpvOpTypeVector) {
+    return IsSignedIntScalarType(GetComponentType(id));
+  }
+
+  return false;
+}
+
+bool ValidationState_t::IsBoolScalarType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+  return inst->opcode() == SpvOpTypeBool;
+}
+
+bool ValidationState_t::IsBoolVectorType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+
+  if (inst->opcode() == SpvOpTypeVector) {
+    return IsBoolScalarType(GetComponentType(id));
+  }
+
+  return false;
+}
+
+bool ValidationState_t::IsFloatMatrixType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+
+  if (inst->opcode() == SpvOpTypeMatrix) {
+    return IsFloatScalarType(GetComponentType(id));
+  }
+
+  return false;
+}
+
+bool ValidationState_t::GetMatrixTypeInfo(
+    uint32_t id, uint32_t* num_rows, uint32_t* num_cols,
+    uint32_t* column_type, uint32_t* component_type) const {
+  if (!id)
+    return false;
+
+  const Instruction* mat_inst = FindDef(id);
+  assert(mat_inst);
+  if (mat_inst->opcode() != SpvOpTypeMatrix)
+    return false;
+
+  const uint32_t vec_type = mat_inst->word(2);
+  const Instruction* vec_inst = FindDef(vec_type);
+  assert(vec_inst);
+
+  if (vec_inst->opcode() != SpvOpTypeVector) {
+    assert(0);
+    return false;
+  }
+
+  *num_cols = mat_inst->word(3);
+  *num_rows = vec_inst->word(3);
+  *column_type = mat_inst->word(2);
+  *component_type = vec_inst->word(2);
+
+  return true;
+}
+
+bool ValidationState_t::GetStructMemberTypes(
+    uint32_t struct_type_id, std::vector<uint32_t>* member_types) const {
+  member_types->clear();
+  if (!struct_type_id)
+    return false;
+
+  const Instruction* inst = FindDef(struct_type_id);
+  assert(inst);
+  if (inst->opcode() != SpvOpTypeStruct)
+    return false;
+
+  *member_types = std::vector<uint32_t>(inst->words().cbegin() + 2,
+                                        inst->words().cend());
+
+ if (member_types->empty())
+   return false;
+
+  return true;
+}
+
+bool ValidationState_t::IsPointerType(uint32_t id) const {
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+  return inst->opcode() == SpvOpTypePointer;
+}
+
+bool ValidationState_t::GetPointerTypeInfo(
+    uint32_t id, uint32_t* data_type, uint32_t* storage_class) const {
+  if (!id)
+    return false;
+
+  const Instruction* inst = FindDef(id);
+  assert(inst);
+  if (inst->opcode() != SpvOpTypePointer)
+    return false;
+
+  *storage_class = inst->word(2);
+  *data_type = inst->word(3);
+  return true;
+}
+
+uint32_t ValidationState_t::GetOperandTypeId(
+    const spv_parsed_instruction_t* inst,
+    size_t operand_index) const {
+  assert(operand_index < inst->num_operands);
+  const spv_parsed_operand_t& operand = inst->operands[operand_index];
+  assert(operand.num_words == 1);
+  return GetTypeId(inst->words[operand.offset]);
+}
+
 }  /// namespace libspirv

@@ -16,13 +16,6 @@
 #include "pass_fixture.h"
 #include "pass_utils.h"
 
-template <typename T> std::vector<T> concat(const std::vector<T> &a, const std::vector<T> &b) {
-    std::vector<T> ret = std::vector<T>();
-    std::copy(a.begin(), a.end(), back_inserter(ret));
-    std::copy(b.begin(), b.end(), back_inserter(ret));
-    return ret;
-}
-
 namespace {
 
 using namespace spvtools;
@@ -134,8 +127,8 @@ TEST_F(InlineTest, Simple) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::InlineExhaustivePass>(
-      JoinAllInsts(concat(concat(predefs, before), nonEntryFuncs)),
-      JoinAllInsts(concat(concat(predefs, after), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, before), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, after), nonEntryFuncs)),
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
@@ -284,8 +277,8 @@ TEST_F(InlineTest, Nested) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::InlineExhaustivePass>(
-      JoinAllInsts(concat(concat(predefs, before), nonEntryFuncs)),
-      JoinAllInsts(concat(concat(predefs, after), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, before), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, after), nonEntryFuncs)),
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
@@ -413,8 +406,8 @@ TEST_F(InlineTest, InOutParameter) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::InlineExhaustivePass>(
-      JoinAllInsts(concat(concat(predefs, before), nonEntryFuncs)),
-      JoinAllInsts(concat(concat(predefs, after), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, before), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, after), nonEntryFuncs)),
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
@@ -549,8 +542,8 @@ TEST_F(InlineTest, BranchInCallee) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::InlineExhaustivePass>(
-      JoinAllInsts(concat(concat(predefs, before), nonEntryFuncs)),
-      JoinAllInsts(concat(concat(predefs, after), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, before), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, after), nonEntryFuncs)),
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
@@ -744,8 +737,8 @@ TEST_F(InlineTest, PhiAfterCall) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::InlineExhaustivePass>(
-      JoinAllInsts(concat(concat(predefs, before), nonEntryFuncs)),
-      JoinAllInsts(concat(concat(predefs, after), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, before), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, after), nonEntryFuncs)),
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
@@ -941,8 +934,8 @@ TEST_F(InlineTest, OpSampledImageOutOfBlock) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::InlineExhaustivePass>(
-      JoinAllInsts(concat(concat(predefs, before), nonEntryFuncs)),
-      JoinAllInsts(concat(concat(predefs, after), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, before), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, after), nonEntryFuncs)),
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
@@ -1147,8 +1140,8 @@ TEST_F(InlineTest, OpImageOutOfBlock) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::InlineExhaustivePass>(
-      JoinAllInsts(concat(concat(predefs, before), nonEntryFuncs)),
-      JoinAllInsts(concat(concat(predefs, after), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, before), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, after), nonEntryFuncs)),
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
@@ -1353,8 +1346,8 @@ TEST_F(InlineTest, OpImageAndOpSampledImageOutOfBlock) {
       // clang-format on
   };
   SinglePassRunAndCheck<opt::InlineExhaustivePass>(
-      JoinAllInsts(concat(concat(predefs, before), nonEntryFuncs)),
-      JoinAllInsts(concat(concat(predefs, after), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, before), nonEntryFuncs)),
+      JoinAllInsts(Concat(Concat(predefs, after), nonEntryFuncs)),
       /* skip_nop = */ false, /* do_validate = */ true);
 }
 
@@ -1838,6 +1831,83 @@ OpFunctionEnd
       true);
 }
 
+TEST_F(InlineTest, MultiBlockLoopHeaderCallsMultiBlockCallee) {
+  // Like SingleBlockLoopCallsMultiBlockCallee but the loop has several
+  // blocks, but the function call still occurs in the loop header.
+  // Example from https://github.com/KhronosGroup/SPIRV-Tools/issues/800
+
+  const std::string predefs =
+      R"(OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %1 "main"
+OpSource OpenCL_C 120
+%bool = OpTypeBool
+%true = OpConstantTrue %bool
+%int = OpTypeInt 32 1
+%int_1 = OpConstant %int 1
+%int_2 = OpConstant %int 2
+%int_3 = OpConstant %int 3
+%int_4 = OpConstant %int 4
+%int_5 = OpConstant %int 5
+%void = OpTypeVoid
+%11 = OpTypeFunction %void
+)";
+
+  const std::string nonEntryFuncs =
+      R"(%12 = OpFunction %void None %11
+%13 = OpLabel
+%14 = OpCopyObject %int %int_1
+OpBranch %15
+%15 = OpLabel
+%16 = OpCopyObject %int %int_2
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string before =
+      R"(%1 = OpFunction %void None %11
+%17 = OpLabel
+OpBranch %18
+%18 = OpLabel
+%19 = OpCopyObject %int %int_3
+%20 = OpFunctionCall %void %12
+%21 = OpCopyObject %int %int_4
+OpLoopMerge %22 %23 None
+OpBranchConditional %true %23 %22
+%23 = OpLabel
+%24 = OpCopyObject %int %int_5
+OpBranchConditional %true %18 %22
+%22 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string after =
+      R"(%1 = OpFunction %void None %11
+%17 = OpLabel
+OpBranch %18
+%18 = OpLabel
+%19 = OpCopyObject %int %int_3
+%25 = OpCopyObject %int %int_1
+OpLoopMerge %22 %23 None
+OpBranch %26
+%26 = OpLabel
+%27 = OpCopyObject %int %int_2
+%21 = OpCopyObject %int %int_4
+OpBranchConditional %true %23 %22
+%23 = OpLabel
+%24 = OpCopyObject %int %int_5
+OpBranchConditional %true %18 %22
+%22 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  SinglePassRunAndCheck<opt::InlineExhaustivePass>(
+      predefs + nonEntryFuncs + before, predefs + nonEntryFuncs + after, false,
+      true);
+}
+
 TEST_F(InlineTest, SingleBlockLoopCallsMultiBlockCalleeHavingSelectionMerge) {
   // This is similar to SingleBlockLoopCallsMultiBlockCallee except
   // that calleee block also has a merge instruction in its first block.
@@ -1918,6 +1988,86 @@ OpBranchConditional %true %19 %19
 %20 = OpPhi %bool %18 %17
 OpBranchConditional %true %13 %16
 %16 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  SinglePassRunAndCheck<opt::InlineExhaustivePass>(
+      predefs + nonEntryFuncs + before, predefs + nonEntryFuncs + after, false,
+      true);
+}
+
+TEST_F(InlineTest, MultiBlockLoopHeaderCallsFromToMultiBlockCalleeHavingSelectionMerge) {
+  // This is similar to SingleBlockLoopCallsMultiBlockCalleeHavingSelectionMerge
+  // but the call is in the header block of a multi block loop.
+
+  const std::string predefs =
+R"(OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %1 "main"
+OpSource OpenCL_C 120
+%bool = OpTypeBool
+%true = OpConstantTrue %bool
+%int = OpTypeInt 32 1
+%int_1 = OpConstant %int 1
+%int_2 = OpConstant %int 2
+%int_3 = OpConstant %int 3
+%int_4 = OpConstant %int 4
+%int_5 = OpConstant %int 5
+%void = OpTypeVoid
+%11 = OpTypeFunction %void
+)";
+
+  const std::string nonEntryFuncs =
+  R"(%12 = OpFunction %void None %11
+%13 = OpLabel
+%14 = OpCopyObject %int %int_1
+OpSelectionMerge %15 None
+OpBranchConditional %true %15 %15
+%15 = OpLabel
+%16 = OpCopyObject %int %int_2
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string before =
+      R"(%1 = OpFunction %void None %11
+%17 = OpLabel
+OpBranch %18
+%18 = OpLabel
+%19 = OpCopyObject %int %int_3
+%20 = OpFunctionCall %void %12
+%21 = OpCopyObject %int %int_4
+OpLoopMerge %22 %23 None
+OpBranchConditional %true %23 %22
+%23 = OpLabel
+%24 = OpCopyObject %int %int_5
+OpBranchConditional %true %18 %22
+%22 = OpLabel
+OpReturn
+OpFunctionEnd
+)";
+
+  const std::string after =
+      R"(%1 = OpFunction %void None %11
+%17 = OpLabel
+OpBranch %18
+%18 = OpLabel
+%19 = OpCopyObject %int %int_3
+OpLoopMerge %22 %23 None
+OpBranch %25
+%25 = OpLabel
+%26 = OpCopyObject %int %int_1
+OpSelectionMerge %27 None
+OpBranchConditional %true %27 %27
+%27 = OpLabel
+%28 = OpCopyObject %int %int_2
+%21 = OpCopyObject %int %int_4
+OpBranchConditional %true %23 %22
+%23 = OpLabel
+%24 = OpCopyObject %int %int_5
+OpBranchConditional %true %18 %22
+%22 = OpLabel
 OpReturn
 OpFunctionEnd
 )";
